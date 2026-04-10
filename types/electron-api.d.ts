@@ -7,9 +7,14 @@ export interface DirectoryEntry {
   extension?: string;
 }
 
-export interface WatchEvent {
-  event: "add" | "addDir" | "change" | "unlink" | "unlinkDir";
+/** Granular filesystem event payload (main → renderer) */
+export interface FsNodeEvent {
+  /** Absolute path, always forward slashes */
   path: string;
+  /** Parent directory path, always forward slashes */
+  parentPath: string;
+  /** Basename of the file/folder */
+  name: string;
 }
 
 export interface IndexProgressPayload {
@@ -29,21 +34,27 @@ export interface SearchResult {
 }
 
 export interface ElectronAPI {
-  // File system
+  // File system — read
   openDirectory(): Promise<string | null>;
   readDirectory(dirPath: string): Promise<DirectoryEntry[]>;
   readFile(filePath: string): Promise<string>; // base64
 
-  // FS write
+  // File system — write
   moveFile(from: string, to: string): Promise<void>;
   deleteFile(path: string): Promise<void>;
   createFile(path: string): Promise<void>;
   createFolder(path: string): Promise<void>;
 
-  // Watcher
+  // Watcher control
   watchDirectory(dirPath: string): Promise<void>;
   unwatchDirectory(dirPath: string): Promise<void>;
-  onFileChange(callback: (payload: WatchEvent) => void): () => void;
+
+  // Granular FS events
+  onFsAdd(callback: (payload: FsNodeEvent) => void): () => void;
+  onFsAddDir(callback: (payload: FsNodeEvent) => void): () => void;
+  onFsRemove(callback: (payload: FsNodeEvent) => void): () => void;
+  onFsRemoveDir(callback: (payload: FsNodeEvent) => void): () => void;
+  onFsChange(callback: (payload: FsNodeEvent) => void): () => void;
 
   // Indexer
   startIndex(rootPath: string): Promise<void>;

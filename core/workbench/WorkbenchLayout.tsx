@@ -17,12 +17,6 @@ import { QUESTIONNAIRE_TEMPLATE } from "@/config/questionnaire";
 import { useIsElectron } from "@/hooks/useIsElectron";
 import { cn } from "@/lib/utils";
 
-/** Browser-safe dirname: returns parent path without Node.js */
-function parentDir(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, "/");
-  return normalized.substring(0, normalized.lastIndexOf("/"));
-}
-
 const PdfViewer = dynamic(
   () => import("@/features/pdf-viewer/PdfViewer").then((m) => m.PdfViewer),
   { ssr: false },
@@ -49,7 +43,10 @@ function ResizeHandle({ className }: { className?: string }) {
 export function WorkbenchLayout() {
   const { activeSidebarView, setSidebarView } = useWorkbenchStore();
   const { activeTab }  = useEditorStore();
-  const { indexStatus, setIndexStatus, refreshNode, root } = useExplorerStore();
+  const {
+    indexStatus, setIndexStatus, root,
+    addFileToTree, addFolderToTree, removeFromTree,
+  } = useExplorerStore();
   const { setIndexed } = useSearchStore();
   const inElectron = useIsElectron();
   const sidebarRef = usePanelRef();
@@ -66,7 +63,7 @@ export function WorkbenchLayout() {
     }
   }, [activeSidebarView, sidebarRef]);
 
-  // Wire indexer events
+  // Wire indexer + granular FS events
   useEffect(() => {
     if (!inElectron) return;
 
@@ -79,16 +76,36 @@ export function WorkbenchLayout() {
       setIndexed(true);
     });
 
-    const offFileChange = window.api.onFileChange(({ path }) => {
-      refreshNode(parentDir(path));
+    // Granular watcher events → surgical tree mutations (no full reload)
+    const offAdd = window.api.onFsAdd(({ path, parentPath, name }) => {
+      console.log(`[FS EVENT] add: ${path}`);
+      addFileToTree(path, parentPath, name);
+    });
+
+    const offAddDir = window.api.onFsAddDir(({ path, parentPath, name }) => {
+      console.log(`[FS EVENT] addDir: ${path}`);
+      addFolderToTree(path, parentPath, name);
+    });
+
+    const offRemove = window.api.onFsRemove(({ path }) => {
+      console.log(`[FS EVENT] remove: ${path}`);
+      removeFromTree(path);
+    });
+
+    const offRemoveDir = window.api.onFsRemoveDir(({ path }) => {
+      console.log(`[FS EVENT] removeDir: ${path}`);
+      removeFromTree(path);
     });
 
     return () => {
       offProgress();
       offComplete();
-      offFileChange();
+      offAdd();
+      offAddDir();
+      offRemove();
+      offRemoveDir();
     };
-  }, [inElectron, setIndexStatus, setIndexed, refreshNode]);
+  }, [inElectron, setIndexStatus, setIndexed, addFileToTree, addFolderToTree, removeFromTree]);
 
   const activeFile = activeTab();
 

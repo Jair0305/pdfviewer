@@ -11,9 +11,25 @@ import { fileURLToPath } from "url";
 import chokidar from "chokidar";
 import { FileIndexer } from "./services/indexer.js";
 import { IPC } from "./ipc-channels.js";
+import * as fsService from "./services/filesystem.js";
+import type { FsNodeEvent } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Normalize to forward slashes for consistent cross-platform paths. */
+function norm(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
+function makeFsNodeEvent(fp: string): FsNodeEvent {
+  const normalized = norm(fp);
+  const parentPath = normalized.substring(0, normalized.lastIndexOf("/"));
+  const name = normalized.substring(normalized.lastIndexOf("/") + 1);
+  return { path: normalized, parentPath, name };
+}
 
 // ─── Singletons ───────────────────────────────────────────────────────────────
 
@@ -73,7 +89,7 @@ function registerHandlers() {
     return canceled ? null : (filePaths[0] ?? null);
   });
 
-  // ── File System ─────────────────────────────────────────────────────────────
+  // ── File System — Read ───────────────────────────────────────────────────────
   ipcMain.handle(IPC.FS_READ_DIR, async (_e, dirPath: string) => {
     try {
       const entries = fs.readdirSync(dirPath, { withFileTypes: true });
@@ -81,7 +97,8 @@ function registerHandlers() {
         .filter((e) => !e.name.startsWith("."))
         .map((e) => ({
           name: e.name,
-          path: path.join(dirPath, e.name),
+          // Always return forward-slash paths so the renderer is consistent
+          path: norm(path.join(dirPath, e.name)),
           type: e.isDirectory() ? "directory" : "file",
           extension: e.isFile() ? path.extname(e.name).toLowerCase() : undefined,
         }))
@@ -99,41 +116,54 @@ function registerHandlers() {
     return buf.toString("base64");
   });
 
-  // ── FS Write Operations ─────────────────────────────────────────────────────
+  // ── File System — Write ──────────────────────────────────────────────────────
   ipcMain.handle(IPC.FS_MOVE, async (_e, { from, to }: { from: string; to: string }) => {
-    fs.renameSync(from, to);
+    await fsService.moveFile(from, to);
   });
 
   ipcMain.handle(IPC.FS_DELETE, async (_e, filePath: string) => {
-    const stat = fs.statSync(filePath);
-    if (stat.isDirectory()) {
-      fs.rmSync(filePath, { recursive: true, force: true });
-    } else {
-      fs.unlinkSync(filePath);
-    }
+    await fsService.deleteFile(filePath);
   });
 
   ipcMain.handle(IPC.FS_CREATE_FILE, async (_e, filePath: string) => {
-    fs.writeFileSync(filePath, "");
+    await fsService.createFile(filePath);
   });
 
   ipcMain.handle(IPC.FS_CREATE_DIR, async (_e, dirPath: string) => {
-    fs.mkdirSync(dirPath, { recursive: true });
+    await fsService.createDirectory(dirPath);
   });
 
   // ── Watcher ─────────────────────────────────────────────────────────────────
   ipcMain.handle(IPC.FS_WATCH_DIR, async (event, dirPath: string) => {
-    watchers.get(dirPath)?.close();
+    // Close existing watcher for this path
+    await watchers.get(dirPath)?.close();
+
     const w = chokidar.watch(dirPath, {
       ignoreInitial: true,
       ignored: /(^|[/\\])\../,
       persistent: true,
+      // Stabilize events: wait for file to stop changing before firing
+      awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
     });
-    w.on("all", (ev, fp) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send(IPC.FS_WATCH_EVENT, { event: ev, path: fp });
-      }
+
+    const send = (channel: string, fp: string) => {
+      if (event.sender.isDestroyed()) return;
+      const payload = makeFsNodeEvent(fp);
+      console.log(`[FS EVENT] ${channel}: ${payload.path}`);
+      event.sender.send(channel, payload);
+    };
+
+    w.on("add",       (fp) => send(IPC.FS_EVENT_ADD, fp));
+    w.on("addDir",    (fp) => {
+      // Skip the root dir itself (fired on watch start with ignoreInitial:false)
+      if (norm(fp) === norm(dirPath)) return;
+      send(IPC.FS_EVENT_ADD_DIR, fp);
     });
+    w.on("unlink",    (fp) => send(IPC.FS_EVENT_REMOVE, fp));
+    w.on("unlinkDir", (fp) => send(IPC.FS_EVENT_REMOVE_DIR, fp));
+    w.on("change",    (fp) => send(IPC.FS_EVENT_CHANGE, fp));
+    w.on("error",     (err) => console.error("[FS ERROR] chokidar:", err));
+
     watchers.set(dirPath, w);
   });
 
@@ -147,7 +177,6 @@ function registerHandlers() {
     const idx = getIndexer();
     idx.clearRoot(rootPath);
 
-    // Run indexing asynchronously to not block the main thread
     setImmediate(() => {
       let count = 0;
       try {
@@ -157,7 +186,7 @@ function registerHandlers() {
           }
         });
       } catch (err) {
-        console.error("Indexer error:", err);
+        console.error("[FS ERROR] Indexer:", err);
       }
       if (!event.sender.isDestroyed()) {
         event.sender.send(IPC.INDEX_COMPLETE, { total: count, rootPath });

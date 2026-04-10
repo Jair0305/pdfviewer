@@ -6,8 +6,8 @@ import {
   dialog,
   shell
 } from "electron";
-import path2 from "path";
-import fs2 from "fs";
+import path3 from "path";
+import fs3 from "fs";
 import { fileURLToPath } from "url";
 import chokidar from "chokidar";
 
@@ -146,10 +146,15 @@ var IPC = {
   FS_DELETE: "fs:delete",
   FS_CREATE_FILE: "fs:create-file",
   FS_CREATE_DIR: "fs:create-dir",
-  // Watcher
+  // Watcher control
   FS_WATCH_DIR: "fs:watch-directory",
   FS_UNWATCH_DIR: "fs:unwatch-directory",
-  FS_WATCH_EVENT: "fs:watch-event",
+  // Granular FS events (main → renderer)
+  FS_EVENT_ADD: "fs:event:add",
+  FS_EVENT_ADD_DIR: "fs:event:add-dir",
+  FS_EVENT_REMOVE: "fs:event:remove",
+  FS_EVENT_REMOVE_DIR: "fs:event:remove-dir",
+  FS_EVENT_CHANGE: "fs:event:change",
   // Indexer
   INDEX_START: "index:start",
   INDEX_PROGRESS: "index:progress",
@@ -158,9 +163,118 @@ var IPC = {
   INDEX_CLEAR: "index:clear"
 };
 
+// electron/services/filesystem.ts
+import fs2 from "fs";
+import fsp from "fs/promises";
+import path2 from "path";
+var FsError = class extends Error {
+  constructor(message, code, filePath) {
+    super(message);
+    this.code = code;
+    this.filePath = filePath;
+    this.name = "FsError";
+  }
+};
+var inFlight = /* @__PURE__ */ new Set();
+function lockPath(p) {
+  const key = path2.normalize(p).toLowerCase();
+  if (inFlight.has(key)) return false;
+  inFlight.add(key);
+  return true;
+}
+function unlockPath(p) {
+  inFlight.delete(path2.normalize(p).toLowerCase());
+}
+async function withLock(filePath, fn) {
+  if (!lockPath(filePath)) {
+    throw new FsError(
+      `[FS ERROR] Operation already in progress: ${filePath}`,
+      "EBUSY",
+      filePath
+    );
+  }
+  try {
+    return await fn();
+  } finally {
+    unlockPath(filePath);
+  }
+}
+function validatePath(filePath) {
+  if (!filePath || typeof filePath !== "string") {
+    throw new FsError(`[FS ERROR] Invalid path: ${String(filePath)}`, "EINVAL", String(filePath));
+  }
+  if (filePath.includes("\0")) {
+    throw new FsError(`[FS ERROR] Path contains null byte`, "EINVAL", filePath);
+  }
+}
+async function moveFile(from, to) {
+  validatePath(from);
+  validatePath(to);
+  return withLock(from, async () => {
+    console.log(`[FS ACTION] move: ${from} \u2192 ${to}`);
+    if (!fs2.existsSync(from)) {
+      throw new FsError(`[FS ERROR] Source not found: ${from}`, "ENOENT", from);
+    }
+    try {
+      await fsp.rename(from, to);
+    } catch (err) {
+      if (err.code === "EXDEV" || err.code === "EPERM") {
+        console.log(`[FS ACTION] rename failed (${err.code}), falling back to copy+unlink`);
+        await fsp.copyFile(from, to);
+        await fsp.unlink(from);
+      } else {
+        console.error(`[FS ERROR] move: ${err.message}`);
+        throw err;
+      }
+    }
+    console.log(`[FS ACTION] move complete: ${from} \u2192 ${to}`);
+  });
+}
+async function deleteFile(filePath) {
+  validatePath(filePath);
+  return withLock(filePath, async () => {
+    console.log(`[FS ACTION] delete: ${filePath}`);
+    let stat;
+    try {
+      stat = fs2.statSync(filePath);
+    } catch (err) {
+      if (err.code === "ENOENT") {
+        console.log(`[FS ACTION] delete: already gone: ${filePath}`);
+        return;
+      }
+      throw err;
+    }
+    if (stat.isDirectory()) {
+      await fsp.rm(filePath, { recursive: true, force: true });
+    } else {
+      await fsp.unlink(filePath);
+    }
+    console.log(`[FS ACTION] delete complete: ${filePath}`);
+  });
+}
+async function createFile(filePath) {
+  validatePath(filePath);
+  console.log(`[FS ACTION] create file: ${filePath}`);
+  await fsp.writeFile(filePath, "");
+}
+async function createDirectory(dirPath) {
+  validatePath(dirPath);
+  console.log(`[FS ACTION] create dir: ${dirPath}`);
+  await fsp.mkdir(dirPath, { recursive: true });
+}
+
 // electron/main.ts
-var __dirname = path2.dirname(fileURLToPath(import.meta.url));
+var __dirname = path3.dirname(fileURLToPath(import.meta.url));
 var isDev = !app2.isPackaged;
+function norm(p) {
+  return p.replace(/\\/g, "/");
+}
+function makeFsNodeEvent(fp) {
+  const normalized = norm(fp);
+  const parentPath = normalized.substring(0, normalized.lastIndexOf("/"));
+  const name = normalized.substring(normalized.lastIndexOf("/") + 1);
+  return { path: normalized, parentPath, name };
+}
 var indexer = null;
 var watchers = /* @__PURE__ */ new Map();
 function getIndexer() {
@@ -177,7 +291,7 @@ function createWindow() {
     backgroundColor: "#09090b",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     webPreferences: {
-      preload: path2.join(__dirname, "preload.cjs"),
+      preload: path3.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
@@ -187,7 +301,7 @@ function createWindow() {
     win.loadURL("http://localhost:3000");
     win.webContents.openDevTools({ mode: "detach" });
   } else {
-    win.loadFile(path2.join(__dirname, "../../out/index.html"));
+    win.loadFile(path3.join(__dirname, "../../out/index.html"));
   }
   win.once("ready-to-show", () => win.show());
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -207,12 +321,13 @@ function registerHandlers() {
   });
   ipcMain.handle(IPC.FS_READ_DIR, async (_e, dirPath) => {
     try {
-      const entries = fs2.readdirSync(dirPath, { withFileTypes: true });
+      const entries = fs3.readdirSync(dirPath, { withFileTypes: true });
       return entries.filter((e) => !e.name.startsWith(".")).map((e) => ({
         name: e.name,
-        path: path2.join(dirPath, e.name),
+        // Always return forward-slash paths so the renderer is consistent
+        path: norm(path3.join(dirPath, e.name)),
         type: e.isDirectory() ? "directory" : "file",
-        extension: e.isFile() ? path2.extname(e.name).toLowerCase() : void 0
+        extension: e.isFile() ? path3.extname(e.name).toLowerCase() : void 0
       })).sort((a, b) => {
         if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
         return a.name.localeCompare(b.name, "es", { numeric: true });
@@ -222,38 +337,45 @@ function registerHandlers() {
     }
   });
   ipcMain.handle(IPC.FS_READ_FILE, async (_e, filePath) => {
-    const buf = fs2.readFileSync(filePath);
+    const buf = fs3.readFileSync(filePath);
     return buf.toString("base64");
   });
   ipcMain.handle(IPC.FS_MOVE, async (_e, { from, to }) => {
-    fs2.renameSync(from, to);
+    await moveFile(from, to);
   });
   ipcMain.handle(IPC.FS_DELETE, async (_e, filePath) => {
-    const stat = fs2.statSync(filePath);
-    if (stat.isDirectory()) {
-      fs2.rmSync(filePath, { recursive: true, force: true });
-    } else {
-      fs2.unlinkSync(filePath);
-    }
+    await deleteFile(filePath);
   });
   ipcMain.handle(IPC.FS_CREATE_FILE, async (_e, filePath) => {
-    fs2.writeFileSync(filePath, "");
+    await createFile(filePath);
   });
   ipcMain.handle(IPC.FS_CREATE_DIR, async (_e, dirPath) => {
-    fs2.mkdirSync(dirPath, { recursive: true });
+    await createDirectory(dirPath);
   });
   ipcMain.handle(IPC.FS_WATCH_DIR, async (event, dirPath) => {
-    watchers.get(dirPath)?.close();
+    await watchers.get(dirPath)?.close();
     const w = chokidar.watch(dirPath, {
       ignoreInitial: true,
       ignored: /(^|[/\\])\../,
-      persistent: true
+      persistent: true,
+      // Stabilize events: wait for file to stop changing before firing
+      awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 }
     });
-    w.on("all", (ev, fp) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send(IPC.FS_WATCH_EVENT, { event: ev, path: fp });
-      }
+    const send = (channel, fp) => {
+      if (event.sender.isDestroyed()) return;
+      const payload = makeFsNodeEvent(fp);
+      console.log(`[FS EVENT] ${channel}: ${payload.path}`);
+      event.sender.send(channel, payload);
+    };
+    w.on("add", (fp) => send(IPC.FS_EVENT_ADD, fp));
+    w.on("addDir", (fp) => {
+      if (norm(fp) === norm(dirPath)) return;
+      send(IPC.FS_EVENT_ADD_DIR, fp);
     });
+    w.on("unlink", (fp) => send(IPC.FS_EVENT_REMOVE, fp));
+    w.on("unlinkDir", (fp) => send(IPC.FS_EVENT_REMOVE_DIR, fp));
+    w.on("change", (fp) => send(IPC.FS_EVENT_CHANGE, fp));
+    w.on("error", (err) => console.error("[FS ERROR] chokidar:", err));
     watchers.set(dirPath, w);
   });
   ipcMain.handle(IPC.FS_UNWATCH_DIR, async (_e, dirPath) => {
@@ -272,7 +394,7 @@ function registerHandlers() {
           }
         });
       } catch (err) {
-        console.error("Indexer error:", err);
+        console.error("[FS ERROR] Indexer:", err);
       }
       if (!event.sender.isDestroyed()) {
         event.sender.send(IPC.INDEX_COMPLETE, { total: count, rootPath });

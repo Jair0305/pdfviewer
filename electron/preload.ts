@@ -1,9 +1,22 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC } from "./ipc-channels.js";
-import type { DirectoryEntry, WatchEvent, IndexProgressPayload, IndexCompletePayload, SearchResult } from "./types.js";
+import type {
+  DirectoryEntry,
+  FsNodeEvent,
+  IndexProgressPayload,
+  IndexCompletePayload,
+  SearchResult,
+} from "./types.js";
+
+/** Helper: subscribe to an IPC event, return unsubscribe fn */
+function on<T>(channel: string, cb: (payload: T) => void): () => void {
+  const handler = (_: Electron.IpcRendererEvent, payload: T) => cb(payload);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+}
 
 contextBridge.exposeInMainWorld("api", {
-  // ── File System ─────────────────────────────────────────────────────────────
+  // ── File System — Read ─────────────────────────────────────────────────────
   openDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke(IPC.DIALOG_OPEN_DIR),
 
@@ -13,7 +26,7 @@ contextBridge.exposeInMainWorld("api", {
   readFile: (filePath: string): Promise<string> =>
     ipcRenderer.invoke(IPC.FS_READ_FILE, filePath),
 
-  // ── FS Write ────────────────────────────────────────────────────────────────
+  // ── File System — Write ────────────────────────────────────────────────────
   moveFile: (from: string, to: string): Promise<void> =>
     ipcRenderer.invoke(IPC.FS_MOVE, { from, to }),
 
@@ -26,20 +39,21 @@ contextBridge.exposeInMainWorld("api", {
   createFolder: (dirPath: string): Promise<void> =>
     ipcRenderer.invoke(IPC.FS_CREATE_DIR, dirPath),
 
-  // ── Watcher ─────────────────────────────────────────────────────────────────
+  // ── Watcher ────────────────────────────────────────────────────────────────
   watchDirectory: (dirPath: string): Promise<void> =>
     ipcRenderer.invoke(IPC.FS_WATCH_DIR, dirPath),
 
   unwatchDirectory: (dirPath: string): Promise<void> =>
     ipcRenderer.invoke(IPC.FS_UNWATCH_DIR, dirPath),
 
-  onFileChange: (callback: (payload: WatchEvent) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, payload: WatchEvent) => callback(payload);
-    ipcRenderer.on(IPC.FS_WATCH_EVENT, handler);
-    return () => ipcRenderer.removeListener(IPC.FS_WATCH_EVENT, handler);
-  },
+  // Granular FS events
+  onFsAdd:       (cb: (p: FsNodeEvent) => void) => on<FsNodeEvent>(IPC.FS_EVENT_ADD, cb),
+  onFsAddDir:    (cb: (p: FsNodeEvent) => void) => on<FsNodeEvent>(IPC.FS_EVENT_ADD_DIR, cb),
+  onFsRemove:    (cb: (p: FsNodeEvent) => void) => on<FsNodeEvent>(IPC.FS_EVENT_REMOVE, cb),
+  onFsRemoveDir: (cb: (p: FsNodeEvent) => void) => on<FsNodeEvent>(IPC.FS_EVENT_REMOVE_DIR, cb),
+  onFsChange:    (cb: (p: FsNodeEvent) => void) => on<FsNodeEvent>(IPC.FS_EVENT_CHANGE, cb),
 
-  // ── Indexer ─────────────────────────────────────────────────────────────────
+  // ── Indexer ────────────────────────────────────────────────────────────────
   startIndex: (rootPath: string): Promise<void> =>
     ipcRenderer.invoke(IPC.INDEX_START, rootPath),
 
@@ -49,15 +63,9 @@ contextBridge.exposeInMainWorld("api", {
   clearIndex: (rootPath: string): Promise<void> =>
     ipcRenderer.invoke(IPC.INDEX_CLEAR, rootPath),
 
-  onIndexProgress: (callback: (payload: IndexProgressPayload) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, payload: IndexProgressPayload) => callback(payload);
-    ipcRenderer.on(IPC.INDEX_PROGRESS, handler);
-    return () => ipcRenderer.removeListener(IPC.INDEX_PROGRESS, handler);
-  },
+  onIndexProgress: (cb: (p: IndexProgressPayload) => void) =>
+    on<IndexProgressPayload>(IPC.INDEX_PROGRESS, cb),
 
-  onIndexComplete: (callback: (payload: IndexCompletePayload) => void): (() => void) => {
-    const handler = (_: Electron.IpcRendererEvent, payload: IndexCompletePayload) => callback(payload);
-    ipcRenderer.on(IPC.INDEX_COMPLETE, handler);
-    return () => ipcRenderer.removeListener(IPC.INDEX_COMPLETE, handler);
-  },
+  onIndexComplete: (cb: (p: IndexCompletePayload) => void) =>
+    on<IndexCompletePayload>(IPC.INDEX_COMPLETE, cb),
 });

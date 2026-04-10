@@ -5,9 +5,14 @@ export interface DirectoryEntry {
   extension?: string;
 }
 
-export interface WatchEvent {
-  event: "add" | "addDir" | "change" | "unlink" | "unlinkDir";
+/** Payload for add / remove / change events (main → renderer) */
+export interface FsNodeEvent {
+  /** Absolute path (forward slashes) */
   path: string;
+  /** Parent directory path (forward slashes) */
+  parentPath: string;
+  /** Basename */
+  name: string;
 }
 
 export interface IndexProgressPayload {
