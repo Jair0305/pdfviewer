@@ -1,6 +1,6 @@
 "use client";
 
-import { IconFiles, IconSearch, IconLoader2, IconFolderOpen } from "@tabler/icons-react";
+import { IconFiles, IconSearch, IconSettings2, IconLoader2, IconFolderOpen } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { useWorkbenchStore, type SidebarView } from "@/state/workbench.store";
 import { useExplorerStore } from "@/state/explorer.store";
@@ -18,8 +18,12 @@ interface ActivityBarItem {
 }
 
 const ITEMS: ActivityBarItem[] = [
-  { id: "explorer", icon: IconFiles,  label: "Explorador (E)" },
-  { id: "search",   icon: IconSearch, label: "Buscar (B)"    },
+  { id: "explorer", icon: IconFiles,    label: "Explorador (E)" },
+  { id: "search",   icon: IconSearch,   label: "Buscar (B)"     },
+];
+
+const BOTTOM_ITEMS: ActivityBarItem[] = [
+  { id: "settings", icon: IconSettings2, label: "Configuración" },
 ];
 
 export function ActivityBar() {
@@ -53,6 +57,29 @@ export function ActivityBar() {
 
         {/* Spacer */}
         <div className="flex-1" />
+
+        {/* Bottom items (settings, etc.) */}
+        {BOTTOM_ITEMS.map(({ id, icon: Icon, label }) => (
+          <Tooltip key={id}>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => toggleSidebarView(id)}
+                className={cn(
+                  "relative flex h-11 w-11 items-center justify-center rounded-md transition-colors",
+                  "hover:bg-accent hover:text-accent-foreground",
+                  activeSidebarView === id
+                    ? "text-foreground before:absolute before:left-0 before:h-6 before:w-0.5 before:rounded-r before:bg-primary"
+                    : "text-muted-foreground/60",
+                )}
+              >
+                <Icon size={22} strokeWidth={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="text-xs">
+              {label}
+            </TooltipContent>
+          </Tooltip>
+        ))}
 
         {/* Index status indicator */}
         {indexStatus.state === "indexing" && (

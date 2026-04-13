@@ -13,9 +13,28 @@ import {
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/types/expediente";
+import type { DocStatus } from "@/types/docStatus";
 import { useExplorerStore } from "@/state/explorer.store";
 import { useEditorStore } from "@/state/editor.store";
+import { useDocStatusStore } from "@/state/docStatus.store";
+import { useRevisionStore } from "@/state/revision.store";
 import { ContextMenu } from "./ContextMenu";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function computeRelPath(filePath: string, expedientePath: string): string {
+  const fwd    = filePath.replace(/\\/g, "/");
+  const expFwd = expedientePath.replace(/\\/g, "/").replace(/\/$/, "");
+  if (fwd.startsWith(expFwd + "/")) return fwd.slice(expFwd.length);
+  return "/" + (fwd.split("/").pop() ?? fwd);
+}
+
+const STATUS_DOT: Record<DocStatus, string> = {
+  sin_revisar:       "bg-muted-foreground/30",
+  en_revision:       "bg-amber-500",
+  revisado:          "bg-green-500",
+  con_observaciones: "bg-red-500",
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,8 +107,10 @@ export function VirtualFileTree({
 }: VirtualFileTreeProps) {
   const { expandedPaths, loadingPaths, toggleExpanded, root, moveNode, deleteNode, renameNode } =
     useExplorerStore();
-  const { openFile } = useEditorStore();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const { openFile }       = useEditorStore();
+  const { statuses: docStatuses, setDocStatus } = useDocStatusStore();
+  const expedientePath     = useRevisionStore((s) => s.meta?.expedientePath ?? null);
+  const scrollRef          = useRef<HTMLDivElement>(null);
 
   // ── Drag state ────────────────────────────────────────────────────────────
   const dragSourceRef = useRef<FileNode | null>(null);
@@ -304,18 +325,26 @@ export function VirtualFileTree({
       )}
 
       {/* Context menu */}
-      {ctxMenu && (
-        <ContextMenu
-          x={ctxMenu.x}
-          y={ctxMenu.y}
-          node={ctxMenu.node}
-          onClose={() => setCtxMenu(null)}
-          onNewFile={handleCtxNewFile}
-          onNewFolder={handleCtxNewFolder}
-          onRename={handleCtxRename}
-          onDelete={handleCtxDelete}
-        />
-      )}
+      {ctxMenu && (() => {
+        const isFile = ctxMenu.node.type !== "folder";
+        const relPath = isFile && expedientePath
+          ? computeRelPath(ctxMenu.node.path, expedientePath)
+          : null;
+        return (
+          <ContextMenu
+            x={ctxMenu.x}
+            y={ctxMenu.y}
+            node={ctxMenu.node}
+            onClose={() => setCtxMenu(null)}
+            onNewFile={handleCtxNewFile}
+            onNewFolder={handleCtxNewFolder}
+            onRename={handleCtxRename}
+            onDelete={handleCtxDelete}
+            onSetDocStatus={relPath ? (status) => setDocStatus(relPath, status) : undefined}
+            currentDocStatus={relPath ? (docStatuses[relPath] ?? "sin_revisar") : undefined}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -357,12 +386,23 @@ function TreeRow({
 }) {
   const { node, depth, isLoading } = flat;
   const { expandedPaths } = useExplorerStore();
-  const { activeTabId } = useEditorStore();
-  const renameRef = useRef<HTMLInputElement>(null);
+  const { activeTabId }   = useEditorStore();
+  const docStatuses       = useDocStatusStore((s) => s.statuses);
+  const expedientePath    = useRevisionStore((s) => s.meta?.expedientePath ?? null);
+  const renameRef         = useRef<HTMLInputElement>(null);
 
   const isFolder   = node.type === "folder";
   const isExpanded = expandedPaths.has(node.path);
   const isActive   = activeTabId === node.path;
+
+  // Status dot for non-folder files
+  const statusDotClass = (() => {
+    if (isFolder || !expedientePath) return null;
+    const rel    = computeRelPath(node.path, expedientePath);
+    const status = docStatuses[rel];
+    if (!status || status === "sin_revisar") return null;
+    return STATUS_DOT[status];
+  })();
 
   useEffect(() => {
     if (isRenaming) renameRef.current?.focus();
@@ -406,6 +446,11 @@ function TreeRow({
 
       {/* Icon */}
       <FileIcon node={node} isExpanded={isExpanded} />
+
+      {/* Doc status dot */}
+      {statusDotClass && (
+        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", statusDotClass)} />
+      )}
 
       {/* Name or rename input */}
       {isRenaming ? (

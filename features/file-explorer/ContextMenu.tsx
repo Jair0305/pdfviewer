@@ -6,9 +6,23 @@ import {
   IconFolderPlus,
   IconPencil,
   IconTrash,
+  IconCircle,
+  IconCircleFilled,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/types/expediente";
+import type { DocStatus } from "@/types/docStatus";
+
+// ─── Status config ────────────────────────────────────────────────────────────
+
+const STATUS_OPTIONS: { value: DocStatus; label: string; color: string }[] = [
+  { value: "sin_revisar",       label: "Sin revisar",       color: "text-muted-foreground/60" },
+  { value: "en_revision",       label: "En revisión",       color: "text-amber-600"           },
+  { value: "revisado",          label: "Revisado",           color: "text-green-600"           },
+  { value: "con_observaciones", label: "Con observaciones", color: "text-red-600"             },
+];
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface ContextMenuProps {
   x: number;
@@ -19,6 +33,9 @@ interface ContextMenuProps {
   onNewFolder: () => void;
   onRename: () => void;
   onDelete: () => void;
+  /** If provided, shows a "Marcar como" section for files */
+  onSetDocStatus?:    (status: DocStatus) => void;
+  currentDocStatus?:  DocStatus;
 }
 
 export function ContextMenu({
@@ -30,11 +47,12 @@ export function ContextMenu({
   onNewFolder,
   onRename,
   onDelete,
+  onSetDocStatus,
+  currentDocStatus,
 }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const isFolder = node.type === "folder";
 
-  // Close on outside click or Escape
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -50,11 +68,10 @@ export function ContextMenu({
     };
   }, [onClose]);
 
-  // Adjust position so menu doesn't overflow viewport
   const style: React.CSSProperties = {
     position: "fixed",
-    top: Math.min(y, window.innerHeight - 160),
-    left: Math.min(x, window.innerWidth - 200),
+    top:  Math.min(y, window.innerHeight - 220),
+    left: Math.min(x, window.innerWidth  - 200),
     zIndex: 9999,
   };
 
@@ -71,6 +88,7 @@ export function ContextMenu({
           <div className="my-1 border-t" />
         </>
       )}
+
       <MenuItem icon={<IconPencil size={13} />} label="Renombrar" onClick={() => { onClose(); onRename(); }} />
       <MenuItem
         icon={<IconTrash size={13} />}
@@ -78,6 +96,35 @@ export function ContextMenu({
         onClick={() => { onClose(); onDelete(); }}
         danger
       />
+
+      {/* Doc status section — only for non-folder files */}
+      {!isFolder && onSetDocStatus && (
+        <>
+          <div className="my-1 border-t" />
+          <p className="px-3 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+            Marcar como
+          </p>
+          {STATUS_OPTIONS.map((opt) => {
+            const isActive = (currentDocStatus ?? "sin_revisar") === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => { onSetDocStatus(opt.value); onClose(); }}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors",
+                  "hover:bg-accent hover:text-accent-foreground",
+                  opt.color,
+                )}
+              >
+                {isActive
+                  ? <IconCircleFilled size={8} className="shrink-0" />
+                  : <IconCircle       size={8} className="shrink-0 opacity-40" />}
+                {opt.label}
+              </button>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }

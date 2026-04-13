@@ -106,6 +106,8 @@ interface ExplorerState {
 
   // Directory actions
   openDirectory: () => Promise<void>;
+  /** Open a directory by path without showing a dialog. Used to restore session. */
+  openDirectoryByPath: (dirPath: string, savedExpandedPaths?: string[]) => Promise<void>;
   loadChildren: (node: FileNode) => Promise<void>;
   toggleExpanded: (node: FileNode) => void;
   /** Full re-read from disk for a directory. Use as fallback/recovery only. */
@@ -171,6 +173,44 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
 
     api.watchDirectory(dirPath);
     api.startIndex(dirPath);
+  },
+
+  openDirectoryByPath: async (dirPath: string, savedExpandedPaths: string[] = []) => {
+    const api = getApi();
+    if (!api) return;
+
+    try {
+      const entries = await api.readDirectory(dirPath);
+      const children: FileNode[] = entries.map((e) => ({
+        id: e.path,
+        name: e.name,
+        path: e.path,
+        type: e.type === "directory" ? "folder" : extToFileType(e.extension),
+        loaded: e.type !== "directory",
+      }));
+
+      const rootPath = norm(dirPath);
+      const root: FileNode = {
+        id: rootPath,
+        name: rootPath.split("/").pop() ?? rootPath,
+        path: rootPath,
+        type: "folder",
+        children,
+        loaded: true,
+      };
+
+      set({
+        root,
+        expandedPaths: new Set([rootPath, ...savedExpandedPaths]),
+        loadingPaths: new Set(),
+        indexStatus: { state: "indexing", total: 0, rootPath },
+      });
+
+      api.watchDirectory(dirPath);
+      api.startIndex(dirPath);
+    } catch (err) {
+      console.error("[FS ERROR] openDirectoryByPath:", err);
+    }
   },
 
   loadChildren: async (node: FileNode) => {

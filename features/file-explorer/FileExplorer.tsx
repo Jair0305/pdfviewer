@@ -67,39 +67,40 @@ export function FileExplorer() {
           </span>
         </div>
 
-        {inElectron && root && (
+        {inElectron && (
           <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              title="Nuevo archivo"
-              onClick={() => startCreate("file")}
+              title="Abrir carpeta…"
+              onClick={openDirectory}
             >
-              <IconFilePlus size={14} />
+              <IconFolderOpen size={14} />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              title="Nueva carpeta"
-              onClick={() => startCreate("folder")}
-            >
-              <IconFolderPlus size={14} />
-            </Button>
+            {root && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title="Nuevo archivo"
+                  onClick={() => startCreate("file")}
+                >
+                  <IconFilePlus size={14} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title="Nueva carpeta"
+                  onClick={() => startCreate("folder")}
+                >
+                  <IconFolderPlus size={14} />
+                </Button>
+              </>
+            )}
           </div>
-        )}
-
-        {inElectron && !root && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            title="Abrir expediente"
-            onClick={openDirectory}
-          >
-            <IconFolderPlus size={14} />
-          </Button>
         )}
       </div>
 

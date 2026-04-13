@@ -27,6 +27,8 @@ export interface Tab {
   type: FileType;
   /** Preview tab gets replaced on next file open (like VS Code) */
   isPreview: boolean;
+  /** Pinned tabs stay to the left and cannot be closed by "close others" */
+  isPinned?: boolean;
   /** Satisfies FileNode.loaded requirement for PdfViewer compatibility */
   loaded: true;
 }

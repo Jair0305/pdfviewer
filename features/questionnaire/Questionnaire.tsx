@@ -4,28 +4,31 @@ import { useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 import {
   IconListCheck,
   IconCircleCheck,
   IconCircleX,
   IconCircleDashed,
-  IconFileAlert,
+  IconFolderOpen,
+  IconAlertTriangle,
+  IconCloudOff,
+  IconX,
 } from "@tabler/icons-react";
 import { QuestionItem } from "./QuestionItem";
-import { useQuestionnaireStore } from "@/state/questionnaire.store";
+import { useRevisionStore } from "@/state/revision.store";
 import type { Question } from "@/types/expediente";
 
 interface QuestionnaireProps {
   questions: Question[];
-  /** Active file path — answers are stored per file */
-  filePath: string | null;
 }
 
-export function Questionnaire({ questions, filePath }: QuestionnaireProps) {
-  const { getAnswers, getProgress, setAnswer } = useQuestionnaireStore();
+export function Questionnaire({ questions }: QuestionnaireProps) {
+  const { isLoaded, meta, warning, isOutsideClientes, dismissWarning, getAnswers, getProgress, setAnswer } =
+    useRevisionStore();
 
-  const answers  = filePath ? getAnswers(filePath) : {};
-  const progress = filePath ? getProgress(filePath, questions.length) : { answered: 0, yes: 0, no: 0 };
+  const answers  = getAnswers();
+  const progress = getProgress(questions.length);
 
   // Group by category
   const grouped = useMemo(() => {
@@ -38,11 +41,11 @@ export function Questionnaire({ questions, filePath }: QuestionnaireProps) {
     return map;
   }, [questions]);
 
-  if (!filePath) {
+  if (!isLoaded) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-        <IconFileAlert size={36} strokeWidth={1} className="opacity-30" />
-        <p className="text-sm">Abre un PDF para revisar</p>
+        <IconFolderOpen size={36} strokeWidth={1} className="opacity-30" />
+        <p className="text-sm">Abre un expediente para revisar</p>
       </div>
     );
   }
@@ -56,6 +59,67 @@ export function Questionnaire({ questions, filePath }: QuestionnaireProps) {
           Cuestionario
         </span>
       </div>
+
+      <Separator className="shrink-0" />
+
+      {/* Active expediente indicator */}
+      {meta && (
+        <div className="flex shrink-0 flex-col gap-0.5 bg-muted/20 px-3 py-1.5">
+          <div className="flex items-center gap-1.5">
+            <IconFolderOpen size={11} className="shrink-0 text-yellow-500" />
+            <span
+              className="truncate text-[11px] font-semibold text-foreground"
+              title={meta.expedientePath}
+            >
+              {meta.expedienteId}
+            </span>
+          </div>
+          {meta.relativePath !== meta.expedienteId && (
+            <span
+              className="truncate pl-[19px] text-[10px] text-muted-foreground"
+              title={meta.relativePath}
+            >
+              {meta.relativePath}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Outside clientesFolder — memory-only indicator */}
+      {isOutsideClientes && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-muted bg-muted/40 px-3 py-1.5">
+          <IconCloudOff size={11} className="shrink-0 text-muted-foreground/60" />
+          <span className="text-[10px] text-muted-foreground">
+            Fuera de la carpeta de clientes — solo memoria, no se guarda
+          </span>
+        </div>
+      )}
+
+      {/* Name-collision warning */}
+      {warning?.type === "name_collision" && (
+        <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/10 px-3 py-2">
+          <div className="flex items-start gap-2">
+            <IconAlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-500" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                Posible conflicto de nombre
+              </p>
+              <p className="mt-0.5 break-all text-[10px] text-muted-foreground">
+                Esta revisión fue creada para:{" "}
+                <span className="font-mono">{warning.conflictPath}</span>
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 shrink-0 text-muted-foreground"
+              onClick={dismissWarning}
+            >
+              <IconX size={11} />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Separator className="shrink-0" />
 
@@ -78,28 +142,30 @@ export function Questionnaire({ questions, filePath }: QuestionnaireProps) {
       <Separator className="shrink-0" />
 
       {/* Questions */}
-      <ScrollArea className="flex-1">
-        <div className="space-y-4 p-3">
-          {Array.from(grouped.entries()).map(([category, qs]) => (
-            <div key={category}>
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                {category}
-              </p>
-              <div className="space-y-1.5">
-                {qs.map((q, i) => (
-                  <QuestionItem
-                    key={q.id}
-                    question={q}
-                    value={answers[q.id]?.value ?? null}
-                    onAnswer={(val) => setAnswer(filePath, q.id, val)}
-                    index={i + 1}
-                  />
-                ))}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <ScrollArea className="h-full">
+          <div className="space-y-4 p-3">
+            {Array.from(grouped.entries()).map(([category, qs]) => (
+              <div key={category}>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                  {category}
+                </p>
+                <div className="space-y-1.5">
+                  {qs.map((q, i) => (
+                    <QuestionItem
+                      key={q.id}
+                      question={q}
+                      value={answers[q.id]?.value ?? null}
+                      onAnswer={(val) => setAnswer(q.id, val)}
+                      index={i + 1}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </ScrollArea>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
     </div>
   );
 }

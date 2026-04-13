@@ -27,6 +27,13 @@ export const IPC = {
   INDEX_COMPLETE:      "index:complete",
   INDEX_SEARCH:        "index:search",
   INDEX_CLEAR:         "index:clear",
+  // Shell utilities
+  SHELL_SHOW_FILE:     "shell:show-item",
+  // Revision — generic step I/O (no new channels needed when adding future steps)
+  REVISION_INIT:       "revision:init",
+  REVISION_SAVE_META:  "revision:save-meta",
+  REVISION_LOAD_STEP:  "revision:load-step",
+  REVISION_SAVE_STEP:  "revision:save-step",
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

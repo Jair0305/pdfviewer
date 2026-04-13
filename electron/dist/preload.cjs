@@ -28,7 +28,14 @@ var IPC = {
   INDEX_PROGRESS: "index:progress",
   INDEX_COMPLETE: "index:complete",
   INDEX_SEARCH: "index:search",
-  INDEX_CLEAR: "index:clear"
+  INDEX_CLEAR: "index:clear",
+  // Shell utilities
+  SHELL_SHOW_FILE: "shell:show-item",
+  // Revision — generic step I/O (no new channels needed when adding future steps)
+  REVISION_INIT: "revision:init",
+  REVISION_SAVE_META: "revision:save-meta",
+  REVISION_LOAD_STEP: "revision:load-step",
+  REVISION_SAVE_STEP: "revision:save-step"
 };
 
 // electron/preload.ts
@@ -61,5 +68,14 @@ import_electron.contextBridge.exposeInMainWorld("api", {
   searchIndex: (query) => import_electron.ipcRenderer.invoke(IPC.INDEX_SEARCH, query),
   clearIndex: (rootPath) => import_electron.ipcRenderer.invoke(IPC.INDEX_CLEAR, rootPath),
   onIndexProgress: (cb) => on(IPC.INDEX_PROGRESS, cb),
-  onIndexComplete: (cb) => on(IPC.INDEX_COMPLETE, cb)
+  onIndexComplete: (cb) => on(IPC.INDEX_COMPLETE, cb),
+  // ── Shell utilities ────────────────────────────────────────────────────────
+  showInFolder: (filePath) => import_electron.ipcRenderer.invoke(IPC.SHELL_SHOW_FILE, filePath),
+  // ── Revision ───────────────────────────────────────────────────────────────
+  revision: {
+    init: (expedientePath, clientesFolder, revisionesFolder) => import_electron.ipcRenderer.invoke(IPC.REVISION_INIT, expedientePath, clientesFolder, revisionesFolder),
+    saveMeta: (revisionPath, meta) => import_electron.ipcRenderer.invoke(IPC.REVISION_SAVE_META, revisionPath, meta),
+    loadStep: (revisionPath, stepId) => import_electron.ipcRenderer.invoke(IPC.REVISION_LOAD_STEP, revisionPath, stepId),
+    saveStep: (revisionPath, stepId, data) => import_electron.ipcRenderer.invoke(IPC.REVISION_SAVE_STEP, revisionPath, stepId, data)
+  }
 });

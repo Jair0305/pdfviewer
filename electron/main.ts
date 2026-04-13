@@ -12,6 +12,7 @@ import chokidar from "chokidar";
 import { FileIndexer } from "./services/indexer.js";
 import { IPC } from "./ipc-channels.js";
 import * as fsService from "./services/filesystem.js";
+import * as revisionService from "./services/revision.js";
 import type { FsNodeEvent } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -205,6 +206,65 @@ function registerHandlers() {
   ipcMain.handle(IPC.INDEX_CLEAR, async (_e, rootPath: string) => {
     getIndexer().clearRoot(rootPath);
   });
+
+  // ── Shell utilities ─────────────────────────────────────────────────────────
+  ipcMain.handle(IPC.SHELL_SHOW_FILE, (_e, filePath: string) => {
+    shell.showItemInFolder(filePath);
+  });
+
+  // ── Revision ─────────────────────────────────────────────────────────────────
+  ipcMain.handle(
+    IPC.REVISION_INIT,
+    async (
+      _e,
+      expedientePath: string,
+      clientesFolder: string | null,
+      revisionesFolder: string,
+    ) => {
+      try {
+        return await revisionService.init(expedientePath, clientesFolder, revisionesFolder);
+      } catch (err) {
+        console.error("[REVISION ERROR] init:", err);
+        throw err;
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC.REVISION_SAVE_META,
+    async (_e, revisionPath: string, meta: unknown) => {
+      try {
+        await revisionService.saveMeta(revisionPath, meta as Parameters<typeof revisionService.saveMeta>[1]);
+      } catch (err) {
+        console.error("[REVISION ERROR] saveMeta:", err);
+        throw err;
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC.REVISION_LOAD_STEP,
+    async (_e, revisionPath: string, stepId: string) => {
+      try {
+        return await revisionService.loadStepData(revisionPath, stepId);
+      } catch (err) {
+        console.error("[REVISION ERROR] loadStep:", err);
+        return null;
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC.REVISION_SAVE_STEP,
+    async (_e, revisionPath: string, stepId: string, data: unknown) => {
+      try {
+        await revisionService.saveStepData(revisionPath, stepId, data);
+      } catch (err) {
+        console.error("[REVISION ERROR] saveStep:", err);
+        throw err;
+      }
+    },
+  );
 }
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────

@@ -1,5 +1,12 @@
 export {};
 
+import type { RevisionMeta } from "./revision";
+
+export type RevisionInitResult =
+  | { status: "ok";             meta: RevisionMeta }
+  | { status: "path_updated";   meta: RevisionMeta; previousPath: string }
+  | { status: "name_collision"; meta: RevisionMeta; conflictPath: string };
+
 export interface DirectoryEntry {
   name: string;
   path: string;
@@ -62,6 +69,26 @@ export interface ElectronAPI {
   clearIndex(rootPath: string): Promise<void>;
   onIndexProgress(callback: (payload: IndexProgressPayload) => void): () => void;
   onIndexComplete(callback: (payload: IndexCompletePayload) => void): () => void;
+
+  // Shell utilities
+  showInFolder(filePath: string): Promise<void>;
+
+  // Revision — generic step I/O
+  revision: {
+    /**
+     * Creates / loads the revision for an expediente.
+     * Returns a tagged result so the renderer can react to path mismatches.
+     */
+    /**
+     * Creates the mirrored revision folder + meta.json if missing.
+     * clientesFolder is used to compute the stable relative path for mirroring.
+     */
+    init(expedientePath: string, clientesFolder: string | null, revisionesFolder: string): Promise<RevisionInitResult>;
+    saveMeta(revisionPath: string, meta: RevisionMeta): Promise<void>;
+    /** Returns parsed JSON of <stepId>.json, or null if not found. Cast to the step's own type. */
+    loadStep(revisionPath: string, stepId: string): Promise<unknown>;
+    saveStep(revisionPath: string, stepId: string, data: unknown): Promise<void>;
+  };
 }
 
 declare global {

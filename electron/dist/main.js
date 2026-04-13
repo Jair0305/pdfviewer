@@ -6,7 +6,7 @@ import {
   dialog,
   shell
 } from "electron";
-import path3 from "path";
+import path4 from "path";
 import fs3 from "fs";
 import { fileURLToPath } from "url";
 import chokidar from "chokidar";
@@ -160,7 +160,14 @@ var IPC = {
   INDEX_PROGRESS: "index:progress",
   INDEX_COMPLETE: "index:complete",
   INDEX_SEARCH: "index:search",
-  INDEX_CLEAR: "index:clear"
+  INDEX_CLEAR: "index:clear",
+  // Shell utilities
+  SHELL_SHOW_FILE: "shell:show-item",
+  // Revision — generic step I/O (no new channels needed when adding future steps)
+  REVISION_INIT: "revision:init",
+  REVISION_SAVE_META: "revision:save-meta",
+  REVISION_LOAD_STEP: "revision:load-step",
+  REVISION_SAVE_STEP: "revision:save-step"
 };
 
 // electron/services/filesystem.ts
@@ -263,14 +270,114 @@ async function createDirectory(dirPath) {
   await fsp.mkdir(dirPath, { recursive: true });
 }
 
-// electron/main.ts
-var __dirname = path3.dirname(fileURLToPath(import.meta.url));
-var isDev = !app2.isPackaged;
+// electron/services/revision.ts
+import fsPromises from "fs/promises";
+import path3 from "path";
+import crypto from "crypto";
 function norm(p) {
   return p.replace(/\\/g, "/");
 }
+function computeRelativePath(expedientePath, clientesFolder) {
+  const normExp = norm(expedientePath);
+  if (clientesFolder) {
+    const normBase = norm(clientesFolder).replace(/\/$/, "");
+    if (normExp.startsWith(normBase + "/")) {
+      return normExp.slice(normBase.length + 1);
+    }
+  }
+  return path3.basename(expedientePath);
+}
+async function init(expedientePath, clientesFolder, revisionesFolder) {
+  const relativePath = computeRelativePath(expedientePath, clientesFolder);
+  const expedienteId = path3.basename(expedientePath);
+  const revisionPath = path3.join(revisionesFolder, ...relativePath.split("/"));
+  await fsPromises.mkdir(revisionPath, { recursive: true });
+  const metaPath = path3.join(revisionPath, "meta.json");
+  const currentNorm = norm(expedientePath);
+  let existingMeta = null;
+  try {
+    const raw = await fsPromises.readFile(metaPath, "utf8");
+    existingMeta = JSON.parse(raw);
+  } catch {
+  }
+  if (existingMeta) {
+    if (existingMeta.relativePath === relativePath) {
+      if (norm(existingMeta.expedientePath) === currentNorm) {
+        return { status: "ok", meta: existingMeta };
+      }
+      const updated = {
+        ...existingMeta,
+        expedientePath: currentNorm,
+        revisionPath: norm(revisionPath),
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await fsPromises.writeFile(metaPath, JSON.stringify(updated, null, 2), "utf8");
+      return {
+        status: "path_updated",
+        meta: updated,
+        previousPath: norm(existingMeta.expedientePath)
+      };
+    }
+    return {
+      status: "name_collision",
+      meta: existingMeta,
+      conflictPath: existingMeta.expedientePath
+    };
+  }
+  const meta = {
+    uuid: crypto.randomUUID(),
+    expedienteId,
+    relativePath,
+    expedientePath: currentNorm,
+    revisionPath: norm(revisionPath),
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    steps: [
+      { id: "cuestionario", status: "pendiente", updatedAt: null },
+      { id: "anotaciones", status: "pendiente", updatedAt: null },
+      { id: "citas", status: "pendiente", updatedAt: null },
+      { id: "docStatus", status: "pendiente", updatedAt: null },
+      { id: "sintesis", status: "pendiente", updatedAt: null }
+    ]
+  };
+  await fsPromises.writeFile(metaPath, JSON.stringify(meta, null, 2), "utf8");
+  return { status: "ok", meta };
+}
+async function saveMeta(revisionPath, meta) {
+  const updated = { ...meta, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+  await fsPromises.writeFile(
+    path3.join(revisionPath, "meta.json"),
+    JSON.stringify(updated, null, 2),
+    "utf8"
+  );
+}
+async function loadStepData(revisionPath, stepId) {
+  try {
+    const raw = await fsPromises.readFile(
+      path3.join(revisionPath, `${stepId}.json`),
+      "utf8"
+    );
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+async function saveStepData(revisionPath, stepId, data) {
+  await fsPromises.writeFile(
+    path3.join(revisionPath, `${stepId}.json`),
+    JSON.stringify(data, null, 2),
+    "utf8"
+  );
+}
+
+// electron/main.ts
+var __dirname = path4.dirname(fileURLToPath(import.meta.url));
+var isDev = !app2.isPackaged;
+function norm2(p) {
+  return p.replace(/\\/g, "/");
+}
 function makeFsNodeEvent(fp) {
-  const normalized = norm(fp);
+  const normalized = norm2(fp);
   const parentPath = normalized.substring(0, normalized.lastIndexOf("/"));
   const name = normalized.substring(normalized.lastIndexOf("/") + 1);
   return { path: normalized, parentPath, name };
@@ -291,7 +398,7 @@ function createWindow() {
     backgroundColor: "#09090b",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     webPreferences: {
-      preload: path3.join(__dirname, "preload.cjs"),
+      preload: path4.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
@@ -301,7 +408,7 @@ function createWindow() {
     win.loadURL("http://localhost:3000");
     win.webContents.openDevTools({ mode: "detach" });
   } else {
-    win.loadFile(path3.join(__dirname, "../../out/index.html"));
+    win.loadFile(path4.join(__dirname, "../../out/index.html"));
   }
   win.once("ready-to-show", () => win.show());
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -325,9 +432,9 @@ function registerHandlers() {
       return entries.filter((e) => !e.name.startsWith(".")).map((e) => ({
         name: e.name,
         // Always return forward-slash paths so the renderer is consistent
-        path: norm(path3.join(dirPath, e.name)),
+        path: norm2(path4.join(dirPath, e.name)),
         type: e.isDirectory() ? "directory" : "file",
-        extension: e.isFile() ? path3.extname(e.name).toLowerCase() : void 0
+        extension: e.isFile() ? path4.extname(e.name).toLowerCase() : void 0
       })).sort((a, b) => {
         if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
         return a.name.localeCompare(b.name, "es", { numeric: true });
@@ -369,7 +476,7 @@ function registerHandlers() {
     };
     w.on("add", (fp) => send(IPC.FS_EVENT_ADD, fp));
     w.on("addDir", (fp) => {
-      if (norm(fp) === norm(dirPath)) return;
+      if (norm2(fp) === norm2(dirPath)) return;
       send(IPC.FS_EVENT_ADD_DIR, fp);
     });
     w.on("unlink", (fp) => send(IPC.FS_EVENT_REMOVE, fp));
@@ -411,6 +518,53 @@ function registerHandlers() {
   ipcMain.handle(IPC.INDEX_CLEAR, async (_e, rootPath) => {
     getIndexer().clearRoot(rootPath);
   });
+  ipcMain.handle(IPC.SHELL_SHOW_FILE, (_e, filePath) => {
+    shell.showItemInFolder(filePath);
+  });
+  ipcMain.handle(
+    IPC.REVISION_INIT,
+    async (_e, expedientePath, clientesFolder, revisionesFolder) => {
+      try {
+        return await init(expedientePath, clientesFolder, revisionesFolder);
+      } catch (err) {
+        console.error("[REVISION ERROR] init:", err);
+        throw err;
+      }
+    }
+  );
+  ipcMain.handle(
+    IPC.REVISION_SAVE_META,
+    async (_e, revisionPath, meta) => {
+      try {
+        await saveMeta(revisionPath, meta);
+      } catch (err) {
+        console.error("[REVISION ERROR] saveMeta:", err);
+        throw err;
+      }
+    }
+  );
+  ipcMain.handle(
+    IPC.REVISION_LOAD_STEP,
+    async (_e, revisionPath, stepId) => {
+      try {
+        return await loadStepData(revisionPath, stepId);
+      } catch (err) {
+        console.error("[REVISION ERROR] loadStep:", err);
+        return null;
+      }
+    }
+  );
+  ipcMain.handle(
+    IPC.REVISION_SAVE_STEP,
+    async (_e, revisionPath, stepId, data) => {
+      try {
+        await saveStepData(revisionPath, stepId, data);
+      } catch (err) {
+        console.error("[REVISION ERROR] saveStep:", err);
+        throw err;
+      }
+    }
+  );
 }
 app2.whenReady().then(() => {
   registerHandlers();

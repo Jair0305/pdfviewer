@@ -68,4 +68,23 @@ contextBridge.exposeInMainWorld("api", {
 
   onIndexComplete: (cb: (p: IndexCompletePayload) => void) =>
     on<IndexCompletePayload>(IPC.INDEX_COMPLETE, cb),
+
+  // ── Shell utilities ────────────────────────────────────────────────────────
+  showInFolder: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.SHELL_SHOW_FILE, filePath),
+
+  // ── Revision ───────────────────────────────────────────────────────────────
+  revision: {
+    init: (expedientePath: string, clientesFolder: string | null, revisionesFolder: string): Promise<unknown> =>
+      ipcRenderer.invoke(IPC.REVISION_INIT, expedientePath, clientesFolder, revisionesFolder),
+
+    saveMeta: (revisionPath: string, meta: unknown): Promise<void> =>
+      ipcRenderer.invoke(IPC.REVISION_SAVE_META, revisionPath, meta),
+
+    loadStep: (revisionPath: string, stepId: string): Promise<unknown> =>
+      ipcRenderer.invoke(IPC.REVISION_LOAD_STEP, revisionPath, stepId),
+
+    saveStep: (revisionPath: string, stepId: string, data: unknown): Promise<void> =>
+      ipcRenderer.invoke(IPC.REVISION_SAVE_STEP, revisionPath, stepId, data),
+  },
 });
