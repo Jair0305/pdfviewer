@@ -88,8 +88,8 @@ function flattenTree(
 
 // ─── VirtualFileTree ──────────────────────────────────────────────────────────
 
-const ROW_HEIGHT = 24;
-const INDENT = 10;
+const ROW_HEIGHT = 26;
+const INDENT = 14;
 
 interface VirtualFileTreeProps {
   nodes: FileNode[];
@@ -420,13 +420,22 @@ function TreeRow({
       onDragEnd={onDragEnd}
       title={node.path}
       className={cn(
-        "flex h-full w-full items-center gap-1 pr-2 text-left text-[13px] transition-colors",
-        "hover:bg-accent hover:text-accent-foreground",
+        "group relative flex h-full w-full items-center gap-1.5 text-left text-[13px] transition-colors",
+        "hover:bg-accent/50 hover:text-accent-foreground",
         isActive && "bg-accent text-accent-foreground",
         isDragOver && "bg-primary/20 outline outline-1 outline-primary/50",
       )}
-      style={{ paddingLeft: `${depth * INDENT + 6}px` }}
+      style={{ paddingLeft: `${depth * INDENT + 10}px`, paddingRight: '8px' }}
     >
+      {/* Indent guides */}
+      {depth > 0 && Array.from({ length: depth }).map((_, i) => (
+        <div
+          key={i}
+          className="pointer-events-none absolute bottom-0 top-0 w-px bg-border/30 transition-colors group-hover:bg-border/60"
+          style={{ left: `${i * INDENT + 16}px` }}
+        />
+      ))}
+
       {/* Chevron / spinner */}
       {isFolder ? (
         isLoading ? (

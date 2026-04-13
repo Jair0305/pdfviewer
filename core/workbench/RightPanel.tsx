@@ -24,9 +24,9 @@ export function RightPanel({ questions }: RightPanelProps) {
   const sintesisContent = useSintesisStore((s) => s.content);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden border-l">
+    <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* Tab bar — scrollable so it stays usable at any panel width */}
-      <div className="flex shrink-0 items-stretch overflow-x-auto border-b bg-background">
+      <div className="flex shrink-0 items-stretch overflow-x-auto border-b border-border">
         <TabButton
           label="Cuestionario"
           active={rightPanelTab === "cuestionario"}
@@ -84,10 +84,10 @@ function TabButton({
     <button
       onClick={onClick}
       className={cn(
-        "relative flex-1 min-w-[58px] py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors whitespace-nowrap px-2",
+        "relative flex-1 min-w-[58px] py-[6px] text-xs font-medium transition-colors whitespace-nowrap px-3",
         active
-          ? "border-b-2 border-primary text-foreground"
-          : "text-muted-foreground/60 hover:text-foreground",
+          ? "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-[1px] after:bg-primary"
+          : "text-muted-foreground hover:text-foreground",
       )}
     >
       {label}

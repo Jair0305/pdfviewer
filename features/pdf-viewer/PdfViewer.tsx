@@ -93,7 +93,7 @@ function NotePopup({ state, pageWidth, pageHeight, onClose }: NotePopupProps) {
   return (
     <div
       style={{ position: "absolute", left, top, width: POPUP_W, zIndex: 30 }}
-      className="rounded-lg border bg-background shadow-2xl"
+      className="rounded-xl border border-border/60 bg-background/85 backdrop-blur-2xl shadow-2xl animate-in zoom-in-95 duration-150 ease-out overflow-hidden"
       // Prevent clicks on the popup from propagating to the page (which would close it or start drawing)
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
@@ -184,7 +184,7 @@ function SelectionBubble({
   return (
     <div
       style={{ position: "fixed", left, top, zIndex: 9000 }}
-      className="flex items-center gap-1 rounded-lg border bg-background px-2 py-1.5 shadow-xl"
+      className="flex items-center gap-1.5 rounded-xl border border-border/60 bg-background/85 backdrop-blur-2xl px-2.5 py-2 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200 ease-out"
       onMouseDown={(e) => e.stopPropagation()} // don't clear via scroll-area mousedown
     >
       {(["yellow", "green", "red", "blue"] as AnnotationColor[]).map((c) => (
@@ -750,7 +750,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
         }
       `}</style>
       {/* ── Toolbar ───────────────────────────────────────────────────────── */}
-      <div className="flex shrink-0 items-center gap-1 border-b bg-background px-2 py-1">
+      <div className="flex shrink-0 items-center gap-1 border-b border-border bg-muted/20 px-2 py-1.5">
         {/* Thumbnail toggle */}
         <Button
           variant="ghost" size="icon" className="h-6 w-6"
@@ -995,7 +995,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
               )}
               onMouseDown={() => setSelectionBubble(null)}
             >
-              <div className="flex flex-col items-center gap-4 py-4">
+              <div className="flex flex-col items-center gap-8 py-8 px-4">
                 {numPages > 0 &&
                   Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
                     const pageAnnotations = relativeFilePath
@@ -1032,7 +1032,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
                         key={pageNum}
                         ref={makePageRef(pageNum)}
                         data-page={pageNum}
-                        className="relative shadow-lg"
+                        className="relative shadow-md border ring-1 ring-black/5 dark:ring-white/5"
                         style={{ width: pageW, height: pageH }}
                         onMouseUp={(e) => handlePageMouseUp(e, pageNum)}
                       >
@@ -1138,31 +1138,48 @@ export function PdfViewer({ file }: PdfViewerProps) {
 
 function EmptyState({ icon, message, sub }: { icon: React.ReactNode; message: string; sub: string }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-      {icon}
-      <p className="text-sm font-medium">{message}</p>
-      <p className="text-xs opacity-60">{sub}</p>
+    <div className="flex h-full flex-col items-center justify-center text-muted-foreground relative overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-40 dark:mix-blend-screen">
+        <div className="h-72 w-72 rounded-full bg-primary/10 blur-[80px]" />
+      </div>
+      <div className="relative z-10 flex flex-col items-center gap-3 animate-in fade-in zoom-in-95 duration-500">
+        <div className="text-foreground/20">{icon}</div>
+        <div className="text-center">
+          <p className="text-[15px] font-medium text-foreground/80">{message}</p>
+          <p className="mt-1 text-xs opacity-60 max-w-[250px]">{sub}</p>
+        </div>
+      </div>
     </div>
   );
 }
 
 function LoadingState() {
   return (
-    <div className="flex h-64 items-center justify-center gap-2 text-muted-foreground">
-      <IconLoader2 size={18} className="animate-spin" />
-      <span className="text-sm">Cargando PDF…</span>
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden text-muted-foreground">
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-40 dark:mix-blend-screen">
+        <div className="h-72 w-72 rounded-full bg-primary/10 blur-[80px]" />
+      </div>
+      <div className="relative z-10 flex flex-col items-center gap-3 animate-in fade-in duration-500">
+        <IconLoader2 size={24} className="animate-spin text-primary/60" />
+        <span className="text-sm font-medium">Cargando PDF…</span>
+      </div>
     </div>
   );
 }
 
 function ErrorState({ message, path }: { message?: string; path?: string }) {
   return (
-    <div className="flex h-64 flex-col items-center justify-center gap-2 text-muted-foreground">
-      <IconFileAlert size={32} strokeWidth={1} className="text-amber-500/70" />
-      <span className="text-sm">{message ?? "Error al cargar el PDF"}</span>
-      {path && (
-        <span className="max-w-xs break-all text-center text-[10px] opacity-50">{path}</span>
-      )}
+    <div className="relative flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden text-muted-foreground">
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-30 dark:mix-blend-screen">
+        <div className="h-72 w-72 rounded-full bg-destructive/20 blur-[80px]" />
+      </div>
+      <div className="relative z-10 flex flex-col items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <IconFileAlert size={36} strokeWidth={1} className="text-destructive/60" />
+        <span className="text-sm font-medium text-destructive/90">{message ?? "Error al cargar el PDF"}</span>
+        {path && (
+          <span className="max-w-[280px] truncate text-center text-[10px] opacity-60">{path}</span>
+        )}
+      </div>
     </div>
   );
 }

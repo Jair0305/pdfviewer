@@ -240,7 +240,7 @@ export function TabBar() {
     <>
       <div
         ref={scrollRef}
-        className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b bg-background"
+        className="flex h-[38px] shrink-0 items-stretch overflow-x-auto border-b border-border bg-background/60 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 z-10 sticky top-0"
         style={{ scrollbarWidth: "none" }}
         onDragLeave={() => setDragOverIndex(null)}
       >
@@ -313,11 +313,11 @@ function TabItem({
       onDragEnd={onDragEnd}
       title={tab.path}
       className={cn(
-        "group flex min-w-0 max-w-[200px] shrink-0 items-center gap-1.5 border-r px-3 text-sm",
-        "transition-colors select-none",
+        "group relative flex min-w-0 max-w-[200px] shrink-0 items-center gap-2 border-r border-border px-3 text-[13px]",
+        "transition-all duration-200 ease-out select-none active:bg-muted/50",
         isActive
-          ? "border-b-2 border-b-primary bg-background text-foreground"
-          : "bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          ? "bg-background/80 text-foreground before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-primary shadow-sm"
+          : "bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground",
         isDragOver && "bg-primary/10 outline outline-1 outline-primary/40",
         tab.isPinned && "pr-2",
       )}

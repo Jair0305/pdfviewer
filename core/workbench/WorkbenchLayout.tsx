@@ -67,10 +67,9 @@ function ResizeHandle({ className }: { className?: string }) {
   return (
     <PanelSeparator
       className={cn(
-        "group relative z-10 flex w-[4px] shrink-0 cursor-col-resize bg-transparent",
-        "transition-colors hover:bg-primary/20 active:bg-primary/30",
-        "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border",
-        "hover:after:bg-primary/40",
+        "group relative z-10 flex w-[6px] shrink-0 items-center justify-center cursor-col-resize bg-transparent",
+        "after:absolute after:inset-y-0 after:w-[1px] after:bg-border/50",
+        "hover:after:bg-primary/50 active:after:bg-primary transition-colors hover:delay-150",
         className,
       )}
     />
@@ -283,7 +282,7 @@ export function WorkbenchLayout() {
             }}
             style={{ overflow: "hidden" }}
           >
-            <div key={sidebarKey} className="flex h-full w-full flex-col overflow-hidden border-r">
+            <div key={sidebarKey} className="flex h-full w-full flex-col overflow-hidden bg-muted/10">
               {activeSidebarView === "explorer" && <FileExplorer />}
               {activeSidebarView === "search"   && <SearchPanel />}
               {activeSidebarView === "settings" && <SettingsPanel />}
@@ -331,7 +330,7 @@ export function WorkbenchLayout() {
       </div>
 
       {/* ── Status bar ─────────────────────────────────────────────────── */}
-      <footer className="flex h-6 shrink-0 items-center gap-3 border-t bg-primary px-3 text-primary-foreground">
+      <footer className="flex h-[22px] shrink-0 items-center gap-3 bg-muted/80 px-3 text-muted-foreground border-t border-border">
         <span className="text-[11px] font-medium">
           {indexStatus.state === "indexing" && `Indexando… ${indexStatus.total} archivos`}
           {indexStatus.state === "complete"  && `${indexStatus.total} archivos indexados`}

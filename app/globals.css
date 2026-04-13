@@ -125,5 +125,25 @@
     }
   html {
     @apply font-sans;
-    }
+  }
+
+  /* Custom slim scrollbars for IDE feel */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
 }

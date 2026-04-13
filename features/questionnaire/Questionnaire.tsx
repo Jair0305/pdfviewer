@@ -43,9 +43,16 @@ export function Questionnaire({ questions }: QuestionnaireProps) {
 
   if (!isLoaded) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-        <IconFolderOpen size={36} strokeWidth={1} className="opacity-30" />
-        <p className="text-sm">Abre un expediente para revisar</p>
+      <div className="relative flex h-full flex-col items-center justify-center overflow-hidden text-muted-foreground">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-40 dark:mix-blend-screen">
+          <div className="h-48 w-48 rounded-full bg-primary/10 blur-[60px]" />
+        </div>
+        <div className="relative z-10 flex flex-col items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-700">
+          <div className="text-foreground/20">
+            <IconFolderOpen size={48} strokeWidth={1} />
+          </div>
+          <p className="text-[13px] font-medium text-foreground/70">Abre un expediente para revisar</p>
+        </div>
       </div>
     );
   }
@@ -150,7 +157,7 @@ export function Questionnaire({ questions }: QuestionnaireProps) {
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
                   {category}
                 </p>
-                <div className="space-y-1.5">
+                <div className="flex flex-col">
                   {qs.map((q, i) => (
                     <QuestionItem
                       key={q.id}

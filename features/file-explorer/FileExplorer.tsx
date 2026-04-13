@@ -107,24 +107,31 @@ export function FileExplorer() {
       <Separator className="shrink-0" />
 
       {!root ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center text-muted-foreground">
-          <IconFolderOpen size={40} strokeWidth={1} className="opacity-30" />
-          {inElectron ? (
-            <>
-              <p className="text-xs">Ningún expediente abierto</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 text-xs"
-                onClick={openDirectory}
-              >
-                <IconFolderPlus size={13} />
-                Abrir carpeta
-              </Button>
-            </>
-          ) : (
-            <p className="text-xs">Abre la app en Electron para navegar archivos</p>
-          )}
+        <div className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-4 text-center text-muted-foreground">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-40 dark:mix-blend-screen">
+            <div className="h-48 w-48 rounded-full bg-primary/10 blur-[60px]" />
+          </div>
+          <div className="relative z-10 flex flex-col items-center gap-3 animate-in fade-in zoom-in-95 duration-500">
+            <div className="text-foreground/20">
+              <IconFolderOpen size={44} strokeWidth={1} />
+            </div>
+            {inElectron ? (
+              <>
+                <p className="text-[13px] font-medium text-foreground/80">Ningún expediente abierto</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 h-8 gap-2 bg-background/50 backdrop-blur hover:bg-accent text-xs font-semibold shadow-sm transition-all hover:scale-105 active:scale-95"
+                  onClick={openDirectory}
+                >
+                  <IconFolderPlus size={14} />
+                  Abrir carpeta
+                </Button>
+              </>
+            ) : (
+              <p className="text-xs max-w-[180px] opacity-70">Abre la app en Electron para navegar archivos</p>
+            )}
+          </div>
         </div>
       ) : (
         <>
