@@ -20,6 +20,9 @@ import {
   IconArrowBackUp,
   IconArrowForwardUp,
   IconQuote,
+  IconFocus2,
+  IconEyeOff,
+  IconSunHigh,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -32,6 +35,7 @@ import { useAnotacionesStore } from "@/state/anotaciones.store";
 import { useCitasStore } from "@/state/citas.store";
 import { useDocStatusStore } from "@/state/docStatus.store";
 import { useWorkbenchStore } from "@/state/workbench.store";
+import { useUXStore } from "@/state/ux.store";
 import { AnnotationOverlay, toCanonicalRect } from "@/features/annotations/AnnotationOverlay";
 import { DocStatusButton } from "@/features/pdf-viewer/DocStatusButton";
 import { cn } from "@/lib/utils";
@@ -219,16 +223,59 @@ interface PdfViewerProps {
 export function PdfViewer({ file }: PdfViewerProps) {
   const inElectron        = useIsElectron();
   const viewerContainerRef = useRef<HTMLDivElement>(null);
+  
+  // UX/Health Settings
+  const { 
+    privacyBlur, 
+    autoReadingMode, 
+    readingModeStartHour 
+  } = useUXStore();
+
   const [numPages, setNumPages]             = useState(0);
   const [currentPage, setCurrentPage]       = useState(1);
   const [scale, setScale]                   = useState(1.0);
-  // renderScale follows scale with a short debounce so the PDF canvas only
-  // re-renders after the user stops zooming — CSS transform bridges the gap visually
   const [renderScale, setRenderScale]       = useState(1.0);
   const renderScaleTimerRef                 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pageInputValue, setPageInputValue] = useState("1");
   const [showThumbs, setShowThumbs]         = useState(true);
+  const [zenMode, setZenMode]               = useState(false);
+  const [readingMode, setReadingMode]       = useState(false);
+  const [isFocused, setIsFocused]           = useState(true);
   const [notePopup, setNotePopup]           = useState<NotePopupState | null>(null);
+
+  // Track window focus for "Privacy/Mental Health" blur (only if enabled)
+  useEffect(() => {
+    if (!privacyBlur) {
+      setIsFocused(true);
+      return;
+    }
+    const onFocus = () => setIsFocused(true);
+    const onBlur  = () => setIsFocused(false);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur",  onBlur);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur",  onBlur);
+    };
+  }, [privacyBlur]);
+
+  // Auto Reading Mode logic: Syncs manual state with time-based trigger
+  useEffect(() => {
+    if (!autoReadingMode) return;
+
+    const checkTime = () => {
+      const now = new Date();
+      const currentHour = now.getHours();
+      // If after start hour or before early morning (6 AM)
+      const shouldBeOn = currentHour >= readingModeStartHour || currentHour < 6;
+      setReadingMode(shouldBeOn);
+    };
+
+    checkTime();
+    const interval = setInterval(checkTime, 60000); // Pulse check every minute
+    return () => clearInterval(interval);
+  }, [autoReadingMode, readingModeStartHour]);
+
   const [selectionBubble, setSelectionBubble] = useState<SelectionBubbleState | null>(null);
 
   // Blob URL for the current PDF
@@ -323,6 +370,9 @@ export function PdfViewer({ file }: PdfViewerProps) {
     setPageIntrinsics({});
     setNotePopup(null);
     setSelectionBubble(null);
+
+    // Default exit zen mode if reading a new PDF
+    setZenMode(false);
 
     if (!file || file.type !== "pdf") return;
 
@@ -436,6 +486,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
         if (selectionBubble) { setSelectionBubble(null); window.getSelection()?.removeAllRanges(); return; }
         if (notePopup) { setNotePopup(null); return; }
         if (annotationMode) { setAnnotationMode(null); return; }
+        setZenMode(false);
         return;
       }
 
@@ -736,7 +787,14 @@ export function PdfViewer({ file }: PdfViewerProps) {
   const isErasing    = annotationMode === "erase";
 
   return (
-    <div ref={viewerContainerRef} className="flex h-full flex-col overflow-hidden">
+    <div 
+      ref={viewerContainerRef} 
+      className={cn(
+        "flex h-full flex-col overflow-hidden transition-all duration-500", 
+        zenMode ? "fixed inset-0 z-[9999] bg-background" : "relative",
+        !isFocused && "blur-[8px] grayscale-[0.5] opacity-40 scale-[0.99] pointer-events-none"
+      )}
+    >
       <style>{`
         @keyframes pageFlash {
           0%   { opacity: 0.55; }
@@ -748,7 +806,18 @@ export function PdfViewer({ file }: PdfViewerProps) {
           30%  { opacity: 1; }
           100% { opacity: 0; }
         }
+        .reading-sepia {
+          filter: sepia(0.4) brightness(0.9) contrast(1.05) !important;
+        }
       `}</style>
+
+      {!isFocused && (
+        <div className="absolute inset-0 z-[10000] flex flex-col items-center justify-center bg-background/20 backdrop-blur-sm">
+          <IconEyeOff size={48} className="text-muted-foreground/20 animate-pulse" />
+          <p className="mt-4 text-[10px] font-medium tracking-[0.2em] uppercase text-muted-foreground/40">Pausado por salud mental</p>
+        </div>
+      )}
+
       {/* ── Toolbar ───────────────────────────────────────────────────────── */}
       <div className="flex shrink-0 items-center gap-1 border-b border-border bg-muted/20 px-2 py-1.5">
         {/* Thumbnail toggle */}
@@ -764,35 +833,34 @@ export function PdfViewer({ file }: PdfViewerProps) {
 
         <Separator orientation="vertical" className="mx-1 h-4" />
 
+        {/* Focus / Zen Mode */}
+        <Button
+          variant={zenMode ? "default" : "ghost"}
+          size="icon"
+          className={cn("h-6 w-6", zenMode && "bg-primary/20 text-primary hover:bg-primary/30 dark:text-primary")}
+          onClick={() => setZenMode(!zenMode)}
+          title={zenMode ? "Salir de Zen Mode (Esc)" : "Zen Mode (Visión de túnel)"}
+        >
+          <IconFocus2 size={13} />
+        </Button>
+
+        {/* Reading Mode / Eye Care */}
+        <Button
+          variant={readingMode ? "default" : "ghost"}
+          size="icon"
+          className={cn("h-6 w-6", readingMode && "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20")}
+          onClick={() => setReadingMode(!readingMode)}
+          title={readingMode ? "Desactivar Modo Nocturno" : "Modo Lectura (Cuidado Visual)"}
+        >
+          <IconSunHigh size={13} />
+        </Button>
+
+        <Separator orientation="vertical" className="mx-1 h-4" />
+
         {/* File name */}
-        <span className="mr-1 max-w-[120px] truncate text-xs text-muted-foreground" title={file.name}>
+        <span className="mr-1 max-w-[120px] truncate text-[11px] font-medium text-muted-foreground/80" title={file.name}>
           {file.name}
         </span>
-
-        {/* Doc status button */}
-        {relativeFilePath && docStatusLoaded && (
-          <DocStatusButton relativeFilePath={relativeFilePath} />
-        )}
-
-        <Separator orientation="vertical" className="mx-1 h-4" />
-
-        {/* Page input */}
-        <input
-          type="text"
-          value={pageInputValue}
-          onChange={(e) => { isEditingPageRef.current = true; setPageInputValue(e.target.value); }}
-          onFocus={(e) => { isEditingPageRef.current = true; e.target.select(); }}
-          onBlur={() => { isEditingPageRef.current = false; setPageInputValue(String(currentPage)); }}
-          onKeyDown={handlePageInputKeyDown}
-          className={cn(
-            "h-5 w-8 rounded border border-transparent bg-transparent text-center text-xs tabular-nums",
-            "text-muted-foreground hover:border-border focus:border-border focus:outline-none",
-          )}
-          title="Ir a página (Enter para confirmar)"
-        />
-        <span className="text-xs text-muted-foreground/60">/ {numPages > 0 ? numPages : "—"}</span>
-
-        <Separator orientation="vertical" className="mx-1 h-4" />
 
         {/* Zoom */}
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={zoomOut} title="Reducir zoom (-)">
@@ -969,16 +1037,18 @@ export function PdfViewer({ file }: PdfViewerProps) {
                     )}
                     title={`Página ${pageNum}`}
                   >
-                    <Page
-                      pageNumber={pageNum}
-                      width={88}
-                      rotate={rotation}
-                      renderTextLayer={false}
-                      renderAnnotationLayer={false}
-                      loading={
-                        <div style={{ width: 88, height: 124 }} className="rounded bg-muted/40" />
-                      }
-                    />
+                    <div className={cn("transition-all duration-500", readingMode && "reading-sepia")}>
+                      <Page
+                        pageNumber={pageNum}
+                        width={88}
+                        rotate={rotation}
+                        renderTextLayer={false}
+                        renderAnnotationLayer={false}
+                        loading={
+                          <div style={{ width: 88, height: 124 }} className="rounded bg-muted/40" />
+                        }
+                      />
+                    </div>
                     <p className="mt-0.5 text-center text-[9px] text-muted-foreground">{pageNum}</p>
                   </div>
                 ))}
@@ -1027,15 +1097,18 @@ export function PdfViewer({ file }: PdfViewerProps) {
                     // CSS scale factor: stretches renderScale content to fill displayScale area
                     const cssScaleFactor = renderScale > 0 ? scale / renderScale : 1;
 
-                    return (
-                      <div
-                        key={pageNum}
-                        ref={makePageRef(pageNum)}
-                        data-page={pageNum}
-                        className="relative shadow-md border ring-1 ring-black/5 dark:ring-white/5"
-                        style={{ width: pageW, height: pageH }}
-                        onMouseUp={(e) => handlePageMouseUp(e, pageNum)}
-                      >
+                      return (
+                        <div
+                          key={pageNum}
+                          ref={makePageRef(pageNum)}
+                          data-page={pageNum}
+                          className={cn(
+                            "relative shadow-md border ring-1 ring-black/5 dark:ring-white/5 overflow-hidden transition-all duration-500",
+                            readingMode && "reading-sepia"
+                          )}
+                          style={{ width: pageW, height: pageH }}
+                          onMouseUp={(e) => handlePageMouseUp(e, pageNum)}
+                        >
                         {/*
                           Inner wrapper: rendered at renderScale, CSS-scaled to displayScale.
                           This means the PDF canvas is never blank during rapid zoom —
@@ -1070,9 +1143,14 @@ export function PdfViewer({ file }: PdfViewerProps) {
                                   width:  Math.round(intrinsic.w * renderScale),
                                   height: Math.round(intrinsic.h * renderScale),
                                 }}
-                                className="flex items-center justify-center rounded bg-white dark:bg-zinc-800"
+                                className="flex flex-col p-8 gap-5 bg-white dark:bg-zinc-800 rounded shadow-sm border border-border/10 overflow-hidden"
                               >
-                                <IconLoader2 size={16} className="animate-spin text-muted-foreground/40" />
+                                <div className="w-2/3 h-6 bg-muted/40 rounded animate-pulse" />
+                                <div className="w-full h-3 bg-muted/20 rounded mt-4 animate-pulse" />
+                                <div className="w-full h-3 bg-muted/20 rounded animate-pulse" />
+                                <div className="w-5/6 h-3 bg-muted/20 rounded animate-pulse" />
+                                <div className="w-full h-3 bg-muted/20 rounded animate-pulse" />
+                                <div className="w-4/5 h-3 bg-muted/20 rounded animate-pulse" />
                               </div>
                             }
                           />

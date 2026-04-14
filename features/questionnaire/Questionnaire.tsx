@@ -151,13 +151,25 @@ export function Questionnaire({ questions }: QuestionnaireProps) {
       {/* Questions */}
       <div className="min-h-0 flex-1 overflow-hidden">
         <ScrollArea className="h-full">
-          <div className="space-y-4 p-3">
-            {Array.from(grouped.entries()).map(([category, qs]) => (
+          <div className="mx-auto max-w-2xl space-y-6 p-4">
+            {Array.from(grouped.entries()).map(([category, qs]) => {
+              const answeredCount = qs.filter((q) => answers[q.id]?.value !== undefined && answers[q.id]?.value !== null).length;
+              const percent = qs.length > 0 ? (answeredCount / qs.length) * 100 : 0;
+
+              return (
               <div key={category}>
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                  {category}
-                </p>
-                <div className="flex flex-col">
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                    {category}
+                  </p>
+                  <div className="flex items-center gap-2" title={`${answeredCount} de ${qs.length} completadas`}>
+                    <span className="text-[10px] font-mono opacity-40">{answeredCount}/{qs.length}</span>
+                    <div className="w-3.5 h-3.5 rounded-full border border-border flex items-end overflow-hidden bg-muted/30">
+                      <div className="w-full bg-primary/50 transition-all duration-700 ease-out" style={{ height: `${percent}%` }} />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col rounded-lg border border-border/40 shadow-sm overflow-hidden bg-background">
                   {qs.map((q, i) => (
                     <QuestionItem
                       key={q.id}
@@ -169,7 +181,7 @@ export function Questionnaire({ questions }: QuestionnaireProps) {
                   ))}
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         </ScrollArea>
       </div>

@@ -15,7 +15,8 @@ import { cn } from "@/lib/utils";
 import type { FileNode } from "@/types/expediente";
 import type { DocStatus } from "@/types/docStatus";
 import { useExplorerStore } from "@/state/explorer.store";
-import { useEditorStore } from "@/state/editor.store";
+import { useEditorStore }   from "@/state/editor.store";
+import { useUXStore }       from "@/state/ux.store";
 import { useDocStatusStore } from "@/state/docStatus.store";
 import { useRevisionStore } from "@/state/revision.store";
 import { ContextMenu } from "./ContextMenu";
@@ -246,7 +247,7 @@ export function VirtualFileTree({
   return (
     <div
       ref={scrollRef}
-      className="h-full overflow-auto"
+      className="group/explorer h-full overflow-auto"
       onClick={handleScrollClick}
     >
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -387,6 +388,7 @@ function TreeRow({
   const { node, depth, isLoading } = flat;
   const { expandedPaths } = useExplorerStore();
   const { activeTabId }   = useEditorStore();
+  const { fovealFocus }   = useUXStore();
   const docStatuses       = useDocStatusStore((s) => s.statuses);
   const expedientePath    = useRevisionStore((s) => s.meta?.expedientePath ?? null);
   const renameRef         = useRef<HTMLInputElement>(null);
@@ -420,18 +422,24 @@ function TreeRow({
       onDragEnd={onDragEnd}
       title={node.path}
       className={cn(
-        "group relative flex h-full w-full items-center gap-1.5 text-left text-[13px] transition-colors",
-        "hover:bg-accent/50 hover:text-accent-foreground",
-        isActive && "bg-accent text-accent-foreground",
+        "group relative flex h-full w-full items-center gap-1.5 text-left text-[13px] transition-all duration-300",
+        fovealFocus && "group-hover/explorer:opacity-60 hover:!opacity-100", // Foveal Focus
+        "hover:bg-accent/40 hover:text-accent-foreground hover:scale-[1.01] hover:z-10",
+        isActive && "bg-accent/80 text-accent-foreground font-medium shadow-[inset_0_0_20px_rgba(0,0,0,0.02)] !opacity-100",
         isDragOver && "bg-primary/20 outline outline-1 outline-primary/50",
       )}
-      style={{ paddingLeft: `${depth * INDENT + 10}px`, paddingRight: '8px' }}
+      style={{ paddingLeft: `${depth * INDENT + 10}px`, paddingRight: '12px' }}
     >
-      {/* Indent guides */}
+      {/* Active Indicator: A soft "Glow" dot instead of just a flat background */}
+      {isActive && (
+        <div className="absolute left-1 top-1.5 bottom-1.5 w-1 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)] animate-pulse" />
+      )}
+
+      {/* Indent guides: Subtle by default, light up on group hover for structure */}
       {depth > 0 && Array.from({ length: depth }).map((_, i) => (
         <div
           key={i}
-          className="pointer-events-none absolute bottom-0 top-0 w-px bg-border/30 transition-colors group-hover:bg-border/60"
+          className="pointer-events-none absolute bottom-0 top-0 w-px bg-border/20 transition-colors group-hover:bg-border/50"
           style={{ left: `${i * INDENT + 16}px` }}
         />
       ))}
@@ -536,10 +544,10 @@ function InlineCreateRow({
 function FileIcon({ node, isExpanded }: { node: FileNode; isExpanded: boolean }) {
   if (node.type === "folder") {
     return isExpanded
-      ? <IconFolderOpen size={14} className="shrink-0 text-yellow-400" />
-      : <IconFolder     size={14} className="shrink-0 text-yellow-500" />;
+      ? <IconFolderOpen size={14} className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-yellow-500/80" />
+      : <IconFolder     size={14} className="shrink-0 text-muted-foreground/40 transition-colors group-hover:text-yellow-500/80" />;
   }
-  if (node.type === "pdf") return <IconFileTypePdf size={14} className="shrink-0 text-red-400" />;
-  if (node.type === "xml") return <IconFileTypeXml size={14} className="shrink-0 text-blue-400" />;
-  return <IconFile size={14} className="shrink-0 text-muted-foreground/40" />;
+  if (node.type === "pdf") return <IconFileTypePdf size={14} className="shrink-0 text-muted-foreground/40 transition-colors group-hover:text-red-400/80" />;
+  if (node.type === "xml") return <IconFileTypeXml size={14} className="shrink-0 text-muted-foreground/40 transition-colors group-hover:text-blue-400/80" />;
+  return <IconFile size={14} className="shrink-0 text-muted-foreground/30" />;
 }
