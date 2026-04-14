@@ -24,6 +24,14 @@ import {
   IconFocusCentered,
   IconEyeOff,
   IconSunHigh,
+  IconSearch,
+  IconChevronUp,
+  IconChevronDown,
+  IconX,
+  IconLayoutGrid,
+  IconLayoutColumns,
+  IconLink,
+  IconLinkOff,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -31,6 +39,7 @@ import type { FileNode } from "@/types/expediente";
 import type { AnnotationColor, NormalizedPoint, NormalizedRect } from "@/types/anotaciones";
 import { useIsElectron } from "@/hooks/useIsElectron";
 import { useEditorStore } from "@/state/editor.store";
+import { useExplorerStore } from "@/state/explorer.store";
 import { useRevisionStore } from "@/state/revision.store";
 import { useAnotacionesStore } from "@/state/anotaciones.store";
 import { useCitasStore } from "@/state/citas.store";
@@ -40,6 +49,7 @@ import { useUXStore } from "@/state/ux.store";
 import { AnnotationOverlay, toCanonicalRect } from "@/features/annotations/AnnotationOverlay";
 import { DocStatusButton } from "@/features/pdf-viewer/DocStatusButton";
 import { PdfMinimap } from "@/features/pdf-viewer/PdfMinimap";
+import { ExpedienteDashboard } from "@/features/expediente/ExpedienteDashboard";
 import { cn } from "@/lib/utils";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -220,20 +230,20 @@ function SelectionBubble({
 
 interface PdfViewerProps {
   file: FileNode | null;
+  /** True when this viewer is the right pane of a split layout */
+  isSplitPane?: boolean;
+  /** Called when the user closes the split pane */
+  onCloseSplit?: () => void;
+  /** Which logical pane this viewer occupies — used for focused navigation */
+  paneId?: "left" | "right";
 }
 
-export function PdfViewer({ file }: PdfViewerProps) {
+export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "left" }: PdfViewerProps) {
   const inElectron        = useIsElectron();
   const viewerContainerRef = useRef<HTMLDivElement>(null);
   
   // UX/Health Settings
-  const { 
-    privacyBlur, 
-    autoReadingMode, 
-    readingModeStartHour,
-    zenMode, setZenMode,
-    lighthouseMode
-  } = useUXStore();
+  const { privacyBlur, zenMode, setZenMode, lighthouseMode } = useUXStore();
 
   const [mouseY, setMouseY] = useState(0);
 
@@ -243,14 +253,27 @@ export function PdfViewer({ file }: PdfViewerProps) {
     setMouseY(e.clientY - rect.top);
   }, [lighthouseMode]);
 
+  const root = useExplorerStore((s) => s.root);
+
   const [numPages, setNumPages]             = useState(0);
   const [currentPage, setCurrentPage]       = useState(1);
   const [scale, setScale]                   = useState(1.0);
   const [renderScale, setRenderScale]       = useState(1.0);
-  const renderScaleTimerRef                 = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [pageInputValue, setPageInputValue] = useState("1");
+
+  // ── Split view, gallery & sync scroll ────────────────────────────────────
+  const { setSplitFile, registerScrollEl, registerPaneActions, setPaneState } = useWorkbenchStore();
+  const [galleryMode, setGalleryMode] = useState(false);
+
+  // ── PDF text search ───────────────────────────────────────────────────────
+  const [showSearch, setShowSearch]                 = useState(false);
+  const [searchQuery, setSearchQuery]               = useState("");
+  const [searchMatchPages, setSearchMatchPages]     = useState<number[]>([]);
+  const [searchMatchCounts, setSearchMatchCounts]   = useState<Record<number, number>>({});
+  const [searchCurrentPageIdx, setSearchCurrentPageIdx] = useState(0);
+  const pdfProxyRef  = useRef<any>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const renderScaleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showThumbs, setShowThumbs]         = useState(true);
-  const [readingMode, setReadingMode]       = useState(false);
   const [isFocused, setIsFocused]           = useState(true);
   const [notePopup, setNotePopup]           = useState<NotePopupState | null>(null);
 
@@ -269,23 +292,6 @@ export function PdfViewer({ file }: PdfViewerProps) {
       window.removeEventListener("blur",  onBlur);
     };
   }, [privacyBlur]);
-
-  // Auto Reading Mode logic: Syncs manual state with time-based trigger
-  useEffect(() => {
-    if (!autoReadingMode) return;
-
-    const checkTime = () => {
-      const now = new Date();
-      const currentHour = now.getHours();
-      // If after start hour or before early morning (6 AM)
-      const shouldBeOn = currentHour >= readingModeStartHour || currentHour < 6;
-      setReadingMode(shouldBeOn);
-    };
-
-    checkTime();
-    const interval = setInterval(checkTime, 60000); // Pulse check every minute
-    return () => clearInterval(interval);
-  }, [autoReadingMode, readingModeStartHour]);
 
   // Keyboard shortcut for ZEN MODE (Alt + Z)
   useEffect(() => {
@@ -332,8 +338,10 @@ export function PdfViewer({ file }: PdfViewerProps) {
   const pageRefsMap     = useRef<Map<number, HTMLDivElement>>(new Map());
   const thumbRefsMap    = useRef<Map<number, HTMLDivElement>>(new Map());
   const observerRef     = useRef<IntersectionObserver | null>(null);
-  const ignoreScrollRef = useRef(false);
+  const ignoreScrollRef  = useRef(false);
   const isEditingPageRef = useRef(false);
+  // Prevents echo-loop: true while this pane's scrollTop is being set by the other pane
+  const receivingSyncRef = useRef(false);
 
   // Intrinsic page dimensions (STATE so overlay mounts when values arrive)
   const [pageIntrinsics, setPageIntrinsics] = useState<Record<number, { w: number; h: number }>>({});
@@ -366,7 +374,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
   const { addCita } = useCitasStore();
   // Doc status store — loaded flag for toolbar button
   const { isLoaded: docStatusLoaded } = useDocStatusStore();
-  const { setRightPanelTab } = useWorkbenchStore();
+  const { setRightPanelTab, setFocusedPane, splitFile } = useWorkbenchStore();
 
   // Revision meta for building relative file paths
   const meta = useRevisionStore((s) => s.meta);
@@ -383,9 +391,8 @@ export function PdfViewer({ file }: PdfViewerProps) {
     renderScaleTimerRef.current = setTimeout(() => setRenderScale(scale), 250);
   }, [scale]);
 
-  // ── Page input sync ──────────────────────────────────────────────────────
+  // ── Page change side effects ─────────────────────────────────────────────
   useEffect(() => {
-    if (!isEditingPageRef.current) setPageInputValue(String(currentPage));
     setCurrentVisiblePage(currentPage);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]);
@@ -399,13 +406,19 @@ export function PdfViewer({ file }: PdfViewerProps) {
     setPdfSrc(null);
     setNumPages(0);
     setCurrentPage(1);
-    setPageInputValue("1");
     setScale(1.0);
     setRenderScale(1.0);
     setLoadError(null);
     setPageIntrinsics({});
     setNotePopup(null);
     setSelectionBubble(null);
+    setShowSearch(false);
+    setSearchQuery("");
+    setSearchMatchPages([]);
+    setSearchMatchCounts({});
+    setSearchCurrentPageIdx(0);
+    setGalleryMode(false);
+    pdfProxyRef.current = null;
 
     // Default exit zen mode if reading a new PDF
     setZenMode(false);
@@ -483,6 +496,8 @@ export function PdfViewer({ file }: PdfViewerProps) {
     if (!pendingNavigation || !file) return;
     const normFwd = (p: string) => p.replace(/\\/g, "/");
     if (normFwd(pendingNavigation.filePath) !== normFwd(file.path)) return;
+    // If navigation was targeted at a specific pane, ignore if we're the other one
+    if (pendingNavigation.targetPane && pendingNavigation.targetPane !== paneId) return;
     if (numPages === 0) return;
     scrollToPage(pendingNavigation.pageNumber);
 
@@ -511,20 +526,82 @@ export function PdfViewer({ file }: PdfViewerProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingNavigation, file?.path, numPages]);
 
+  // ── Sync scroll: register this pane's scroll container ───────────────────
+  useEffect(() => {
+    registerScrollEl(paneId, mainScrollRef.current);
+    return () => registerScrollEl(paneId, null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneId, numPages]); // re-register after PDF loads so the element ref is fresh
+
+  // ── Sync scroll: direct DOM listener — reads store state fresh to avoid stale closures ──
+  useEffect(() => {
+    const container = mainScrollRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { syncScroll, _scrollEls } = useWorkbenchStore.getState();
+      if (!syncScroll) return;
+      if ((container as any).__receivingSync) return;
+
+      const otherEl = _scrollEls[paneId === "left" ? "right" : "left"];
+      if (!otherEl) return;
+
+      const maxSrc = container.scrollHeight - container.clientHeight;
+      if (maxSrc <= 0) return;
+      const ratio = container.scrollTop / maxSrc;
+      const maxDst = otherEl.scrollHeight - otherEl.clientHeight;
+
+      (otherEl as any).__receivingSync = true;
+      otherEl.scrollTop = ratio * maxDst;
+      requestAnimationFrame(() => { (otherEl as any).__receivingSync = false; });
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneId, numPages]); // re-attach when PDF content changes
+
+  // ── Pane state sync → store (toolbar reads from here) ────────────────────
+  useEffect(() => {
+    setPaneState(paneId, {
+      file: file ?? null,
+      currentPage,
+      numPages,
+      scale,
+      rotation,
+      galleryMode,
+      showSearch,
+      showThumbs,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneId, file, currentPage, numPages, scale, rotation, galleryMode, showSearch, showThumbs]);
+
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       const isTyping = tag === "INPUT" || tag === "TEXTAREA";
 
-      // Escape: close bubble/popup first, then exit mode
+      // Escape: close search bar first, then bubble/popup, then exit mode
       if (e.key === "Escape") {
+        if (showSearch) { setShowSearch(false); setSearchQuery(""); setSearchMatchPages([]); setSearchMatchCounts({}); setSearchCurrentPageIdx(0); return; }
         if (selectionBubble) { setSelectionBubble(null); window.getSelection()?.removeAllRanges(); return; }
         if (notePopup) { setNotePopup(null); return; }
         if (annotationMode) { setAnnotationMode(null); return; }
         setZenMode(false);
         return;
       }
+
+      // Ctrl+F → toggle search bar
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setShowSearch((v) => {
+          if (!v) setTimeout(() => searchInputRef.current?.focus(), 50);
+          return !v;
+        });
+        return;
+      }
+
 
       // Undo / redo (always allowed, even while typing — standard behavior)
       if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "z") {
@@ -588,7 +665,8 @@ export function PdfViewer({ file }: PdfViewerProps) {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [annotationMode, notePopup, selectionBubble, undo, redo, setAnnotationMode]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annotationMode, notePopup, selectionBubble, showSearch, undo, redo, setAnnotationMode]);
 
   // ── Ctrl+scroll → zoom PDF (only when scrolling inside the viewer) ────────
   useEffect(() => {
@@ -608,10 +686,10 @@ export function PdfViewer({ file }: PdfViewerProps) {
 
   // ── Callbacks ────────────────────────────────────────────────────────────
 
-  const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
-    setNumPages(numPages);
+  const onDocumentLoadSuccess = useCallback((pdf: any) => {
+    pdfProxyRef.current = pdf;
+    setNumPages(pdf.numPages);
     setCurrentPage(1);
-    setPageInputValue("1");
   }, []);
 
   const onDocumentLoadError = useCallback((error: Error) => {
@@ -630,25 +708,30 @@ export function PdfViewer({ file }: PdfViewerProps) {
     ignoreScrollRef.current = true;
     el.scrollIntoView({ behavior: "smooth", block: "start" });
     setCurrentPage(page);
-    setPageInputValue(String(page));
     thumbRefsMap.current.get(page)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     setTimeout(() => { ignoreScrollRef.current = false; }, 600);
   }, []);
 
-  const handlePageInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      const p = parseInt(pageInputValue, 10);
-      if (!isNaN(p) && p >= 1 && p <= numPages) scrollToPage(p);
-      else setPageInputValue(String(currentPage));
-      isEditingPageRef.current = false;
-      e.currentTarget.blur();
-    }
-    if (e.key === "Escape") {
-      setPageInputValue(String(currentPage));
-      isEditingPageRef.current = false;
-      e.currentTarget.blur();
-    }
-  };
+  // ── Pane action registry → store (toolbar calls these) ───────────────────
+  // Must be after scrollToPage declaration
+  useEffect(() => {
+    registerPaneActions(paneId, {
+      goToPage:          (p) => { if (p >= 1 && p <= numPages) scrollToPage(p); },
+      zoomIn:            () => setScale((s) => Math.min(s + 0.15, 5)),
+      zoomOut:           () => setScale((s) => Math.max(s - 0.15, 0.25)),
+      fitPage:           () => setScale(1.0),
+      rotateLeft:        () => file && setPageRotation(`${file.path}:${currentPage}`, rotation - 90),
+      rotateRight:       () => file && setPageRotation(`${file.path}:${currentPage}`, rotation + 90),
+      resetRotation:     () => file && setPageRotation(`${file.path}:${currentPage}`, 0),
+      toggleGallery:     () => setGalleryMode((v) => !v),
+      toggleSearch:      () => setShowSearch((v) => { if (!v) setTimeout(() => searchInputRef.current?.focus(), 50); return !v; }),
+      toggleThumbs:      () => setShowThumbs((v) => !v),
+      toggleReadingMode: () => useUXStore.getState().setReadingMode(!useUXStore.getState().readingMode),
+      openInSplit:       () => file && setSplitFile(file),
+    });
+    return () => registerPaneActions(paneId, null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneId, currentPage, numPages, rotation, file?.path, scrollToPage]);
 
   const makePageRef = useCallback((pageNum: number) => (el: HTMLDivElement | null) => {
     if (el) {
@@ -665,6 +748,76 @@ export function PdfViewer({ file }: PdfViewerProps) {
     if (el) thumbRefsMap.current.set(pageNum, el);
     else thumbRefsMap.current.delete(pageNum);
   }, []);
+
+  // ── Search: compute matches asynchronously when query or pages change ────────
+  useEffect(() => {
+    if (!searchQuery.trim() || !pdfProxyRef.current || numPages === 0) {
+      setSearchMatchPages([]);
+      setSearchMatchCounts({});
+      setSearchCurrentPageIdx(0);
+      return;
+    }
+    let cancelled = false;
+    const query = searchQuery.toLowerCase();
+    const proxy = pdfProxyRef.current;
+    (async () => {
+      const counts: Record<number, number> = {};
+      for (let p = 1; p <= numPages; p++) {
+        if (cancelled) return;
+        try {
+          const page    = await proxy.getPage(p);
+          const content = await page.getTextContent();
+          const text    = (content.items as any[])
+            .map((item) => item.str ?? "")
+            .join(" ")
+            .toLowerCase();
+          let count = 0;
+          let idx   = 0;
+          while ((idx = text.indexOf(query, idx)) !== -1) { count++; idx += query.length; }
+          if (count > 0) counts[p] = count;
+        } catch { /* ignore page errors */ }
+      }
+      if (cancelled) return;
+      const pages = Object.keys(counts).map(Number).sort((a, b) => a - b);
+      setSearchMatchCounts(counts);
+      setSearchMatchPages(pages);
+      setSearchCurrentPageIdx(0);
+      if (pages.length > 0) scrollToPage(pages[0]);
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, numPages]);
+
+  const goToNextMatch = useCallback(() => {
+    if (!searchMatchPages.length) return;
+    const next = (searchCurrentPageIdx + 1) % searchMatchPages.length;
+    setSearchCurrentPageIdx(next);
+    scrollToPage(searchMatchPages[next]);
+  }, [searchMatchPages, searchCurrentPageIdx, scrollToPage]);
+
+  const goToPrevMatch = useCallback(() => {
+    if (!searchMatchPages.length) return;
+    const prev = (searchCurrentPageIdx - 1 + searchMatchPages.length) % searchMatchPages.length;
+    setSearchCurrentPageIdx(prev);
+    scrollToPage(searchMatchPages[prev]);
+  }, [searchMatchPages, searchCurrentPageIdx, scrollToPage]);
+
+  // Memoised text renderer — only recreated when query changes
+  const customTextRenderer = useMemo(() => {
+    if (!searchQuery.trim()) return undefined;
+    return ({ str }: { str: string }) => {
+      if (!str) return str;
+      try {
+        const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return str.replace(
+          new RegExp(`(${escaped})`, "gi"),
+          '<mark class="pdf-search-mark">$1</mark>',
+        );
+      } catch {
+        return str;
+      }
+    };
+  }, [searchQuery]);
 
   const zoomIn  = () => setScale((s) => Math.min(+(s + 0.2).toFixed(1), 3.0));
   const zoomOut = () => setScale((s) => Math.max(+(s - 0.2).toFixed(1), 0.4));
@@ -801,6 +954,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
   // ── Guard states ──────────────────────────────────────────────────────────
 
   if (!file) {
+    if (root) return <ExpedienteDashboard />;
     return (
       <EmptyState
         icon={<IconFileAlert size={44} strokeWidth={1} className="opacity-30" />}
@@ -843,8 +997,11 @@ export function PdfViewer({ file }: PdfViewerProps) {
           30%  { opacity: 1; }
           100% { opacity: 0; }
         }
-        .reading-sepia {
-          filter: sepia(0.4) brightness(0.9) contrast(1.05) !important;
+        .pdf-search-mark {
+          background: rgba(245,158,11,0.45);
+          color: inherit;
+          border-radius: 2px;
+          padding: 0 1px;
         }
       `}</style>
 
@@ -869,172 +1026,57 @@ export function PdfViewer({ file }: PdfViewerProps) {
         </div>
       )}
 
-      {/* ── Toolbar ───────────────────────────────────────────────────────── */}
-      <div className="flex shrink-0 items-center gap-1 border-b border-border bg-muted/20 px-2 py-1.5">
-        {/* Thumbnail toggle */}
-        <Button
-          variant="ghost" size="icon" className="h-6 w-6"
-          onClick={() => setShowThumbs((v) => !v)}
-          title={showThumbs ? "Ocultar miniaturas" : "Mostrar miniaturas"}
-        >
-          {showThumbs
-            ? <IconLayoutSidebarLeftCollapse size={13} />
-            : <IconLayoutSidebarLeftExpand  size={13} />}
-        </Button>
-
-        <Separator orientation="vertical" className="mx-1 h-4" />
-
-        {/* Focus / Zen Mode */}
-        <Button
-          variant={zenMode ? "default" : "ghost"}
-          size="icon"
-          className={cn(
-            "h-6 w-6 relative overflow-hidden transition-all duration-500", 
-            zenMode && "bg-primary text-white shadow-lg ring-2 ring-primary/20 scale-105"
+      {/* ── Search bar ────────────────────────────────────────────────────── */}
+      {showSearch && (
+        <div className="flex shrink-0 items-center gap-1.5 border-b bg-muted/10 px-2 py-1.5 animate-in slide-in-from-top-2 duration-200">
+          <IconSearch size={12} className="shrink-0 text-muted-foreground/60" />
+          <input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); goToNextMatch(); }
+              if (e.key === "Escape") { setShowSearch(false); setSearchQuery(""); setSearchMatchPages([]); setSearchMatchCounts({}); setSearchCurrentPageIdx(0); }
+              e.stopPropagation();
+            }}
+            placeholder="Buscar en el documento… (Ctrl+F)"
+            className="flex-1 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/30"
+          />
+          {searchQuery.trim() && (
+            <span className={cn(
+              "whitespace-nowrap text-[10px] tabular-nums",
+              searchMatchPages.length === 0 ? "text-red-500/70" : "text-muted-foreground/60",
+            )}>
+              {searchMatchPages.length === 0
+                ? "Sin resultados"
+                : `${searchCurrentPageIdx + 1} / ${searchMatchPages.length} pág.`}
+            </span>
           )}
-          onClick={() => setZenMode(!zenMode)}
-          title={zenMode ? "Salir de Modo Zen (Alt+Z / Esc)" : "Modo Zen — Foco Total (Alt+Z)"}
-        >
-          {zenMode ? <IconEye size={13} /> : <IconFocusCentered size={13} />}
-          {zenMode && (
-            <span className="absolute inset-0 bg-white/20 animate-pulse" />
-          )}
-        </Button>
-
-        {/* Reading Mode / Eye Care */}
-        <Button
-          variant={readingMode ? "default" : "ghost"}
-          size="icon"
-          className={cn("h-6 w-6", readingMode && "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20")}
-          onClick={() => setReadingMode(!readingMode)}
-          title={readingMode ? "Desactivar Modo Nocturno" : "Modo Lectura (Cuidado Visual)"}
-        >
-          <IconSunHigh size={13} />
-        </Button>
-
-        <Separator orientation="vertical" className="mx-1 h-4" />
-
-        {/* File name */}
-        <span className="mr-1 max-w-[120px] truncate text-[11px] font-medium text-muted-foreground/80" title={file.name}>
-          {file.name}
-        </span>
-
-        {/* Zoom */}
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={zoomOut} title="Reducir zoom (-)">
-          <IconZoomOut size={13} />
-        </Button>
-        <button
-          onClick={fitPage}
-          className="min-w-[42px] rounded px-1 text-center text-xs tabular-nums text-muted-foreground hover:bg-accent"
-          title="Restablecer zoom (0)"
-        >
-          {Math.round(scale * 100)}%
-        </button>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={zoomIn} title="Ampliar zoom (+)">
-          <IconZoomIn size={13} />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={fitPage} title="Zoom 100% (0)">
-          <IconMaximize size={13} />
-        </Button>
-
-        <Separator orientation="vertical" className="mx-1 h-4" />
-
-        {/* Rotation */}
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={rotateLeft} title="Rotar a la izquierda">
-          <IconRotate size={13} />
-        </Button>
-        <button
-          onClick={resetRotation}
-          className="min-w-[32px] rounded px-1 text-center text-xs tabular-nums text-muted-foreground hover:bg-accent"
-          title="Restablecer rotación"
-        >
-          {rotation}°
-        </button>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={rotateRight} title="Rotar a la derecha">
-          <IconRotateClockwise size={13} />
-        </Button>
-
-        <Separator orientation="vertical" className="mx-1 h-4" />
-
-        {/* Undo / redo */}
-        <Button
-          variant="ghost" size="icon" className="h-6 w-6"
-          onClick={undo}
-          disabled={undoStack.length === 0}
-          title="Deshacer (Ctrl+Z)"
-        >
-          <IconArrowBackUp size={13} />
-        </Button>
-        <Button
-          variant="ghost" size="icon" className="h-6 w-6"
-          onClick={redo}
-          disabled={redoStack.length === 0}
-          title="Rehacer (Ctrl+Y)"
-        >
-          <IconArrowForwardUp size={13} />
-        </Button>
-
-        <Separator orientation="vertical" className="mx-1 h-4" />
-
-        {/* Normal / pointer mode */}
-        <Button
-          variant={annotationMode === null ? "secondary" : "ghost"}
-          size="icon"
-          className="h-6 w-6"
-          onClick={() => setAnnotationMode(null)}
-          title="Modo normal — selección (cursor)"
-        >
-          <IconPointer size={13} />
-        </Button>
-
-        {/* Pen mode */}
-        <Button
-          variant={isAnnotating ? "default" : "ghost"}
-          size="icon"
-          className={cn(
-            "h-6 w-6",
-            isAnnotating && "bg-amber-500 hover:bg-amber-600 text-white dark:text-white",
-          )}
-          onClick={() => setAnnotationMode(isAnnotating ? null : "pen")}
-          title={isAnnotating ? "Salir del modo lápiz (Esc / P)" : "Modo lápiz — dibujar anotación (P)"}
-        >
-          <IconPencil size={13} />
-        </Button>
-
-        {/* Erase mode */}
-        <Button
-          variant={isErasing ? "default" : "ghost"}
-          size="icon"
-          className={cn(
-            "h-6 w-6",
-            isErasing && "bg-red-500 hover:bg-red-600 text-white dark:text-white",
-          )}
-          onClick={() => setAnnotationMode(isErasing ? null : "erase")}
-          title={isErasing ? "Salir del modo borrador (Esc / E)" : "Borrador — clic en trazo para eliminar (E)"}
-        >
-          <IconEraser size={13} />
-        </Button>
-
-        {/* Color picker (only visible when pen is active) */}
-        {isAnnotating && (
-          <div className="flex items-center gap-1 pl-1">
-            {(["yellow", "green", "red", "blue"] as AnnotationColor[]).map((c) => (
-              <button
-                key={c}
-                onClick={() => setActiveColor(c)}
-                className={cn(
-                  "h-3.5 w-3.5 rounded-full transition-all",
-                  COLOR_DOT[c],
-                  activeColor === c
-                    ? "ring-2 ring-primary ring-offset-1 scale-110"
-                    : "opacity-60 hover:opacity-100",
-                )}
-                title={c}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+          <button
+            onClick={goToPrevMatch}
+            disabled={searchMatchPages.length === 0}
+            className="rounded p-0.5 text-muted-foreground/50 hover:bg-accent hover:text-foreground disabled:opacity-30"
+            title="Resultado anterior"
+          >
+            <IconChevronUp size={13} />
+          </button>
+          <button
+            onClick={goToNextMatch}
+            disabled={searchMatchPages.length === 0}
+            className="rounded p-0.5 text-muted-foreground/50 hover:bg-accent hover:text-foreground disabled:opacity-30"
+            title="Resultado siguiente (Enter)"
+          >
+            <IconChevronDown size={13} />
+          </button>
+          <button
+            onClick={() => { setShowSearch(false); setSearchQuery(""); setSearchMatchPages([]); setSearchMatchCounts({}); setSearchCurrentPageIdx(0); }}
+            className="rounded p-0.5 text-muted-foreground/50 hover:bg-accent hover:text-foreground"
+            title="Cerrar búsqueda (Esc)"
+          >
+            <IconX size={13} />
+          </button>
+        </div>
+      )}
 
       {/* Selection bubble (position: fixed — outside scroll area) */}
       {selectionBubble && (
@@ -1078,8 +1120,57 @@ export function PdfViewer({ file }: PdfViewerProps) {
             }
             className="flex min-h-0 flex-1 overflow-hidden"
           >
+            {/* ── Gallery view (inside Document so <Page> has context) ─── */}
+            {galleryMode && numPages > 0 && (
+              <div className="flex-1 overflow-y-auto bg-zinc-100 dark:bg-zinc-900 p-4">
+                <div
+                  className="grid w-full gap-3"
+                  style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}
+                >
+                  {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
+                    <div
+                      key={pageNum}
+                      onClick={() => {
+                        setGalleryMode(false);
+                        setTimeout(() => scrollToPage(pageNum), 80);
+                      }}
+                      className={cn(
+                        "flex cursor-pointer flex-col items-center gap-1.5 rounded-lg p-1.5 transition-all hover:bg-primary/10",
+                        currentPage === pageNum && "bg-primary/15 ring-1 ring-primary/40",
+                      )}
+                      title={`Ir a página ${pageNum}`}
+                    >
+                      <div className={cn(
+                        "overflow-hidden rounded border transition-all duration-300",
+                        currentPage === pageNum
+                          ? "border-primary/60 shadow-md shadow-primary/10"
+                          : "border-border/40",
+                      )}>
+                        <Page
+                          pageNumber={pageNum}
+                          width={136}
+                          rotate={getPageRotation(pageNum)}
+                          renderTextLayer={false}
+                          renderAnnotationLayer={false}
+                          loading={
+                            <div style={{ width: 136, height: 192 }} className="bg-muted/40 animate-pulse rounded" />
+                          }
+                        />
+                      </div>
+                      <span className={cn(
+                        "text-[10px] tabular-nums",
+                        currentPage === pageNum ? "font-bold text-primary" : "text-muted-foreground/60",
+                      )}>
+                        {pageNum}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* ── Thumbnail panel ─────────────────────────────────────── */}
-            {showThumbs && numPages > 0 && (
+            {!galleryMode && showThumbs && numPages > 0 && (
               <div className="flex w-[112px] shrink-0 flex-col overflow-y-auto border-r bg-muted/20 py-2">
                 {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
                   <div
@@ -1094,7 +1185,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
                     )}
                     title={`Página ${pageNum}`}
                   >
-                    <div className={cn("transition-all duration-500", readingMode && "reading-sepia")}>
+                    <div className="transition-all duration-500">
                       <Page
                         pageNumber={pageNum}
                         width={88}
@@ -1119,8 +1210,9 @@ export function PdfViewer({ file }: PdfViewerProps) {
                 "flex-1 overflow-y-auto bg-zinc-100 dark:bg-zinc-900",
                 isAnnotating && "cursor-crosshair",
                 isErasing    && "cursor-default",
+                galleryMode  && "hidden",
               )}
-              onMouseDown={() => setSelectionBubble(null)}
+              onMouseDown={() => { setSelectionBubble(null); setFocusedPane(paneId); }}
             >
               <div className="flex flex-col items-center gap-8 py-8 px-4">
                 {numPages > 0 &&
@@ -1160,10 +1252,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
                           key={pageNum}
                           ref={makePageRef(pageNum)}
                           data-page={pageNum}
-                          className={cn(
-                            "relative shadow-md border ring-1 ring-black/5 dark:ring-white/5 overflow-hidden transition-all duration-500",
-                            readingMode && "reading-sepia"
-                          )}
+                          className="relative shadow-md border ring-1 ring-black/5 dark:ring-white/5 overflow-hidden transition-all duration-500"
                           style={{ width: pageW, height: pageH }}
                           onMouseUp={(e) => handlePageMouseUp(e, pageNum)}
                         >
@@ -1189,6 +1278,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
                             rotate={getPageRotation(pageNum)}
                             renderTextLayer
                             renderAnnotationLayer
+                            customTextRenderer={customTextRenderer}
                             onRenderSuccess={({ originalWidth, originalHeight }) => {
                               setPageIntrinsics((prev) => ({
                                 ...prev,
@@ -1265,14 +1355,16 @@ export function PdfViewer({ file }: PdfViewerProps) {
             </div>
 
             {/* ── Minimap sidebar ────────────────────────────────────────── */}
-            <PdfMinimap
-              numPages={numPages}
-              currentPage={currentPage}
-              annotations={annotations}
-              relativeFilePath={relativeFilePath}
-              mainScrollRef={mainScrollRef}
-              scrollToPage={scrollToPage}
-            />
+            {!galleryMode && (
+              <PdfMinimap
+                numPages={numPages}
+                currentPage={currentPage}
+                annotations={annotations}
+                relativeFilePath={relativeFilePath}
+                mainScrollRef={mainScrollRef}
+                scrollToPage={scrollToPage}
+              />
+            )}
           </Document>
         )}
       </div>

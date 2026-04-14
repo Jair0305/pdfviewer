@@ -8,6 +8,7 @@ import {
   IconTrash,
   IconCircle,
   IconCircleFilled,
+  IconLayoutColumns,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/types/expediente";
@@ -36,6 +37,8 @@ interface ContextMenuProps {
   /** If provided, shows a "Marcar como" section for files */
   onSetDocStatus?:    (status: DocStatus) => void;
   currentDocStatus?:  DocStatus;
+  /** If provided, shows "Abrir en panel derecho" for PDF files */
+  onOpenInSplit?: () => void;
 }
 
 export function ContextMenu({
@@ -49,6 +52,7 @@ export function ContextMenu({
   onDelete,
   onSetDocStatus,
   currentDocStatus,
+  onOpenInSplit,
 }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const isFolder = node.type === "folder";
@@ -90,6 +94,13 @@ export function ContextMenu({
       )}
 
       <MenuItem icon={<IconPencil size={13} />} label="Renombrar" onClick={() => { onClose(); onRename(); }} />
+      {!isFolder && onOpenInSplit && (
+        <MenuItem
+          icon={<IconLayoutColumns size={13} />}
+          label="Abrir en panel derecho"
+          onClick={() => { onOpenInSplit(); onClose(); }}
+        />
+      )}
       <MenuItem
         icon={<IconTrash size={13} />}
         label="Eliminar"

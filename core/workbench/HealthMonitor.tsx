@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useUXStore } from "@/state/ux.store";
 import { useAudioFeedback } from "@/hooks/useAudioFeedback";
-import { IconX, IconCoffee, IconClock, IconLock } from "@tabler/icons-react";
+import { IconX, IconCoffee, IconClock, IconLock, IconLockOpen } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -18,17 +18,18 @@ function formatDuration(totalSeconds: number) {
 }
 
 export function HealthMonitor() {
-  const { 
-    healthReminders, 
-    sessionTimer, 
-    dailyLimitEnabled, 
-    dailyLimitHours, 
-    totalDailyTime, 
+  const {
+    healthReminders,
+    sessionTimer,
+    dailyLimitEnabled,
+    dailyLimitMinutes,
+    totalDailyTime,
     lastSessionReset,
     ambientSound,
     eyePulse,
     addTime,
-    resetTotalTime 
+    resetTotalTime,
+    unlockSession,
   } = useUXStore();
 
   const { playEyePulse } = useAudioFeedback();
@@ -59,12 +60,16 @@ export function HealthMonitor() {
     }
   }, [lastSessionReset, resetTotalTime]);
 
-  // Main time tracking pulse (every second)
+  // Main time tracking pulse (every second) — pauses when locked
+  const isLockedRef = useRef(false);
+  isLockedRef.current = dailyLimitEnabled && internalTime >= dailyLimitMinutes * 60;
+
   useEffect(() => {
     const interval = setInterval(() => {
+      if (isLockedRef.current) return; // timer frozen while locked
       const now = Date.now();
       const deltaS = Math.floor((now - lastCheckTime) / 1000);
-      
+
       if (deltaS >= 1) {
         addTime(deltaS);
         setInternalTime(prev => prev + deltaS);
@@ -176,7 +181,16 @@ export function HealthMonitor() {
 
   if (!mounted) return null;
 
-  const isLocked = dailyLimitEnabled && internalTime >= dailyLimitHours * 3600;
+  const isLocked = dailyLimitEnabled && internalTime >= dailyLimitMinutes * 60;
+
+  // Format limit for display (e.g. "1h 30m" or "45m")
+  const limitH = Math.floor(dailyLimitMinutes / 60);
+  const limitM = dailyLimitMinutes % 60;
+  const limitLabel = limitH > 0 && limitM > 0
+    ? `${limitH}h ${limitM}m`
+    : limitH > 0
+      ? `${limitH}h`
+      : `${limitM}m`;
 
   return (
     <>
@@ -198,7 +212,7 @@ export function HealthMonitor() {
             <div className="space-y-2">
               <h2 className="text-2xl font-bold tracking-tight">Límite Diario Alcanzado</h2>
               <p className="text-muted-foreground leading-relaxed">
-                Has alcanzado tu límite de trabajo de <span className="font-bold text-foreground">{dailyLimitHours} horas</span>. 
+                Has alcanzado tu límite de trabajo de <span className="font-bold text-foreground">{limitLabel}</span>.
                 Tu salud mental es prioridad. La aplicación se ha bloqueado para fomentar un descanso real.
               </p>
             </div>
@@ -207,6 +221,15 @@ export function HealthMonitor() {
               <p className="font-mono text-xl font-bold">{formatDuration(internalTime)}</p>
             </div>
             <p className="text-[11px] text-muted-foreground">Vuelve mañana para continuar con nuevas energías.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 text-[11px] text-muted-foreground hover:text-foreground"
+              onClick={unlockSession}
+            >
+              <IconLockOpen size={13} />
+              Desbloquear por hoy
+            </Button>
           </div>
         </div>
       )}

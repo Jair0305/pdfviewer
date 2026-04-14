@@ -14,11 +14,13 @@ import {
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/types/expediente";
 import type { DocStatus } from "@/types/docStatus";
+import { IconX } from "@tabler/icons-react";
 import { useExplorerStore } from "@/state/explorer.store";
 import { useEditorStore }   from "@/state/editor.store";
 import { useUXStore }       from "@/state/ux.store";
 import { useDocStatusStore } from "@/state/docStatus.store";
 import { useRevisionStore } from "@/state/revision.store";
+import { useWorkbenchStore } from "@/state/workbench.store";
 import { ContextMenu } from "./ContextMenu";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -111,6 +113,7 @@ export function VirtualFileTree({
   const { openFile }       = useEditorStore();
   const { statuses: docStatuses, setDocStatus } = useDocStatusStore();
   const expedientePath     = useRevisionStore((s) => s.meta?.expedientePath ?? null);
+  const { setSplitFile }   = useWorkbenchStore();
   const scrollRef          = useRef<HTMLDivElement>(null);
 
   // ── Drag state ────────────────────────────────────────────────────────────
@@ -128,9 +131,15 @@ export function VirtualFileTree({
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
-  // Close context menu when clicking scroll area
+  // ── Batch selection ───────────────────────────────────────────────────────
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const lastClickedIndexRef = useRef<number | null>(null);
+
+  // Close context menu + clear selection when clicking empty scroll area
   const handleScrollClick = useCallback(() => {
     if (ctxMenu) setCtxMenu(null);
+    setSelectedPaths(new Set());
+    lastClickedIndexRef.current = null;
   }, [ctxMenu]);
 
   // ── Flat list ─────────────────────────────────────────────────────────────
@@ -244,10 +253,20 @@ export function VirtualFileTree({
 
   const cancelRename = useCallback(() => setRenamingPath(null), []);
 
+  const handleBatchSetStatus = useCallback((status: DocStatus) => {
+    if (!expedientePath) return;
+    for (const path of selectedPaths) {
+      setDocStatus(computeRelPath(path, expedientePath), status);
+    }
+    setSelectedPaths(new Set());
+    lastClickedIndexRef.current = null;
+  }, [selectedPaths, expedientePath, setDocStatus]);
+
   return (
+    <div className="relative flex h-full flex-col overflow-hidden">
     <div
       ref={scrollRef}
-      className="group/explorer h-full overflow-auto"
+      className="group/explorer flex-1 overflow-auto min-h-0"
       onClick={handleScrollClick}
     >
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -297,11 +316,46 @@ export function VirtualFileTree({
                 flat={flat}
                 isDragOver={isDragOver}
                 isRenaming={renamingPath === flat.node.path}
+                isSelected={selectedPaths.has(flat.node.path)}
                 renameValue={renameValue}
                 onToggle={() => toggleExpanded(flat.node)}
-                onOpen={() => {
-                  if (flat.node.type !== "folder") openFile(flat.node);
-                  else toggleExpanded(flat.node);
+                onOpen={(e) => {
+                  if (flat.node.type === "folder") {
+                    toggleExpanded(flat.node);
+                    lastClickedIndexRef.current = null;
+                    return;
+                  }
+                  // Ctrl/Meta+click → toggle selection
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedPaths((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(flat.node.path)) next.delete(flat.node.path);
+                      else next.add(flat.node.path);
+                      return next;
+                    });
+                    lastClickedIndexRef.current = vRow.index;
+                    return;
+                  }
+                  // Shift+click → range selection
+                  if (e.shiftKey && lastClickedIndexRef.current !== null) {
+                    const start = Math.min(lastClickedIndexRef.current, vRow.index);
+                    const end   = Math.max(lastClickedIndexRef.current, vRow.index);
+                    setSelectedPaths((prev) => {
+                      const next = new Set(prev);
+                      for (let i = start; i <= end; i++) {
+                        const item = flatItems[i];
+                        if (item && !item.isCreating && item.node.type !== "folder") {
+                          next.add(item.node.path);
+                        }
+                      }
+                      return next;
+                    });
+                    return;
+                  }
+                  // Normal click
+                  lastClickedIndexRef.current = vRow.index;
+                  setSelectedPaths(new Set());
+                  openFile(flat.node);
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -343,9 +397,20 @@ export function VirtualFileTree({
             onDelete={handleCtxDelete}
             onSetDocStatus={relPath ? (status) => setDocStatus(relPath, status) : undefined}
             currentDocStatus={relPath ? (docStatuses[relPath] ?? "sin_revisar") : undefined}
+            onOpenInSplit={isFile && ctxMenu.node.type === "pdf" ? () => setSplitFile(ctxMenu.node) : undefined}
           />
         );
       })()}
+    </div>
+
+    {/* ── Batch selection bar ─────────────────────────────────────────── */}
+    {selectedPaths.size > 0 && (
+      <BatchBar
+        count={selectedPaths.size}
+        onSetStatus={handleBatchSetStatus}
+        onClear={() => { setSelectedPaths(new Set()); lastClickedIndexRef.current = null; }}
+      />
+    )}
     </div>
   );
 }
@@ -356,6 +421,7 @@ function TreeRow({
   flat,
   isDragOver,
   isRenaming,
+  isSelected,
   renameValue,
   onToggle,
   onOpen,
@@ -372,9 +438,10 @@ function TreeRow({
   flat: FlatNode;
   isDragOver: boolean;
   isRenaming: boolean;
+  isSelected: boolean;
   renameValue: string;
   onToggle: () => void;
-  onOpen: () => void;
+  onOpen: (e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onDragStart: () => void;
   onDragOver: (e: React.DragEvent) => void;
@@ -413,7 +480,7 @@ function TreeRow({
   return (
     <button
       draggable
-      onClick={onOpen}
+      onClick={(e) => { e.stopPropagation(); onOpen(e); }}
       onContextMenu={onContextMenu}
       onDragStart={(e) => { e.stopPropagation(); onDragStart(); e.dataTransfer.effectAllowed = "move"; }}
       onDragOver={onDragOver}
@@ -426,6 +493,7 @@ function TreeRow({
         fovealFocus && "group-hover/explorer:opacity-60 hover:!opacity-100", // Foveal Focus
         "hover:bg-accent/40 hover:text-accent-foreground hover:scale-[1.01] hover:z-10",
         isActive && "bg-accent/80 text-accent-foreground font-medium shadow-[inset_0_0_20px_rgba(0,0,0,0.02)] !opacity-100",
+        isSelected && !isActive && "bg-primary/10 text-foreground",
         isDragOver && "bg-primary/20 outline outline-1 outline-primary/50",
       )}
       style={{ paddingLeft: `${depth * INDENT + 10}px`, paddingRight: '12px' }}
@@ -535,6 +603,56 @@ function InlineCreateRow({
         placeholder={type === "folder" ? "nombre_carpeta" : "archivo.pdf"}
         className="min-w-0 flex-1 rounded bg-background px-1 text-[13px] outline outline-1 outline-primary"
       />
+    </div>
+  );
+}
+
+// ─── BatchBar ─────────────────────────────────────────────────────────────────
+
+const BATCH_STATUS_OPTIONS: { value: DocStatus; label: string; color: string }[] = [
+  { value: "sin_revisar",       label: "Sin revisar",       color: "text-muted-foreground/70" },
+  { value: "en_revision",       label: "En revisión",       color: "text-amber-600"            },
+  { value: "revisado",          label: "Revisado",           color: "text-green-600"            },
+  { value: "con_observaciones", label: "Con observaciones", color: "text-red-600"              },
+];
+
+function BatchBar({
+  count,
+  onSetStatus,
+  onClear,
+}: {
+  count: number;
+  onSetStatus: (s: DocStatus) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="shrink-0 border-t bg-background/95 px-3 py-2 space-y-2 animate-in slide-in-from-bottom-2 duration-200">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium text-foreground/80">
+          {count} archivo{count !== 1 ? "s" : ""} seleccionado{count !== 1 ? "s" : ""}
+        </span>
+        <button
+          onClick={onClear}
+          className="rounded p-0.5 text-muted-foreground/50 hover:bg-accent hover:text-foreground"
+          title="Deseleccionar todo"
+        >
+          <IconX size={12} />
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-1">
+        {BATCH_STATUS_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => onSetStatus(opt.value)}
+            className={cn(
+              "rounded px-2 py-1 text-left text-[10px] font-medium transition-colors hover:bg-accent",
+              opt.color,
+            )}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

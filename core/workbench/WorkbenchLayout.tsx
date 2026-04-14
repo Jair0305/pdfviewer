@@ -10,6 +10,7 @@ import { FileExplorer } from "@/features/file-explorer/FileExplorer";
 import { SearchPanel } from "@/features/search/SearchPanel";
 import { SettingsPanel } from "@/features/settings/SettingsPanel";
 import { RightPanel } from "./RightPanel";
+import { PdfToolbar } from "./PdfToolbar";
 import { HealthMonitor } from "./HealthMonitor";
 import { useWorkbenchStore } from "@/state/workbench.store";
 import { useEditorStore } from "@/state/editor.store";
@@ -94,7 +95,7 @@ function ResizeHandle({ className }: { className?: string }) {
 // ─── Workbench ────────────────────────────────────────────────────────────────
 
 export function WorkbenchLayout() {
-  const { activeSidebarView, setSidebarView } = useWorkbenchStore();
+  const { activeSidebarView, setSidebarView, splitFile, setSplitFile } = useWorkbenchStore();
   const { activeTab, restoreTabs }  = useEditorStore();
   const {
     indexStatus, setIndexStatus, root,
@@ -108,7 +109,7 @@ export function WorkbenchLayout() {
   const { loadDocStatus, unloadDocStatus }     = useDocStatusStore();
   const { loadSintesis, unloadSintesis }       = useSintesisStore();
   const { clientesFolder, revisionesFolder } = useSettingsStore();
-  const { contextTinting, zenMode } = useUXStore();
+  const { contextTinting, zenMode, readingMode, setReadingMode, autoReadingMode, readingModeStartHour } = useUXStore();
   const { revisionPath, meta } = useRevisionStore();
   const inElectron = useIsElectron();
   const sidebarRef    = usePanelRef();
@@ -122,6 +123,18 @@ export function WorkbenchLayout() {
 
   // Prevent double-restore across strict mode double-invocation
   const sessionRestoredRef = useRef(false);
+
+  // ── Auto reading mode (time-based) — global, not per-pane ────────────────
+  useEffect(() => {
+    if (!autoReadingMode) return;
+    const check = () => {
+      const h = new Date().getHours();
+      setReadingMode(h >= readingModeStartHour || h < 6);
+    };
+    check();
+    const t = setInterval(check, 60_000);
+    return () => clearInterval(t);
+  }, [autoReadingMode, readingModeStartHour, setReadingMode]);
 
   // Sync panel collapse ↔ store
   const handlePanelCollapse = useCallback(() => setSidebarView(null), [setSidebarView]);
@@ -290,7 +303,9 @@ export function WorkbenchLayout() {
         "flex h-screen flex-col overflow-hidden bg-background transition-colors duration-1000",
       )}
       style={{
-        background: contextTinting && meta?.expedienteId ? getTintStyle(meta.expedienteId) : undefined
+        background: contextTinting && meta?.expedienteId ? getTintStyle(meta.expedienteId) : undefined,
+        filter: readingMode ? "sepia(0.4) brightness(0.9) contrast(1.05)" : undefined,
+        transition: "filter 0.6s ease",
       }}
     >
       <HealthMonitor />
@@ -325,7 +340,8 @@ export function WorkbenchLayout() {
                 minSize="160px"
                 collapsible
                 collapsedSize={0}
-                onResize={(size) => {
+                onResize={(panelSize) => {
+                  const size = panelSize.asPercentage;
                   if (size === 0) {
                     handlePanelCollapse();
                   } else {
@@ -358,12 +374,32 @@ export function WorkbenchLayout() {
               {/* Breadcrumbs */}
               <Breadcrumbs file={activeFile} rootPath={root?.path ?? null} />
 
+              {/* Single shared PDF toolbar */}
+              <PdfToolbar />
+
               {/* PDF + Questionnaire */}
               <div className="min-h-0 flex-1 overflow-hidden">
                 <PanelGroup orientation="horizontal" className="h-full w-full">
-                  {/* PDF Viewer */}
+                  {/* PDF Viewer — single or split */}
                   <Panel minSize="200px" style={{ overflow: "hidden" }}>
-                    <PdfViewer file={activeFile} />
+                    {splitFile ? (
+                      <PanelGroup orientation="horizontal" className="h-full w-full">
+                        <Panel minSize="200px" style={{ overflow: "hidden" }}>
+                          <PdfViewer file={activeFile} paneId="left" />
+                        </Panel>
+                        <ResizeHandle />
+                        <Panel minSize="200px" style={{ overflow: "hidden" }}>
+                          <PdfViewer
+                            file={splitFile}
+                            isSplitPane
+                            paneId="right"
+                            onCloseSplit={() => setSplitFile(null)}
+                          />
+                        </Panel>
+                      </PanelGroup>
+                    ) : (
+                      <PdfViewer file={activeFile} paneId="left" />
+                    )}
                   </Panel>
 
                   {/* Right panel: Cuestionario / Notas tabs */}
@@ -375,8 +411,8 @@ export function WorkbenchLayout() {
                         defaultSize={36}
                         minSize="200px"
                         style={{ overflow: "hidden" }}
-                        onResize={(size) => {
-                          rightPanelSizeRef.current = size;
+                        onResize={(panelSize) => {
+                          rightPanelSizeRef.current = panelSize.asPercentage;
                         }}
                       >
                         <RightPanel questions={QUESTIONNAIRE_TEMPLATE} />

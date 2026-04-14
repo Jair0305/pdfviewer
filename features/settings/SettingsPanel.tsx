@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   IconSettings2,
   IconFolderOpen,
@@ -119,8 +120,24 @@ export function SettingsPanel() {
     ambientSound, setAmbientSound,
     eyePulse, setEyePulse,
     dailyLimitEnabled, setDailyLimitEnabled,
-    dailyLimitHours, setDailyLimitHours
+    dailyLimitMinutes, setDailyLimitMinutes,
+    totalDailyTime,
   } = useUXStore();
+
+  // Decompose total minutes into H + M for the two inputs
+  const limitH = Math.floor(dailyLimitMinutes / 60);
+  const limitM = dailyLimitMinutes % 60;
+
+  const handleLimitHChange = (h: number) => {
+    const newTotal = Math.max(0, h) * 60 + limitM;
+    setDailyLimitMinutes(Math.max(1, newTotal));
+  };
+  const handleLimitMChange = (m: number) => {
+    const newTotal = limitH * 60 + Math.min(59, Math.max(0, m));
+    setDailyLimitMinutes(Math.max(1, newTotal));
+  };
+
+  const limitExceeded = dailyLimitEnabled && totalDailyTime >= dailyLimitMinutes * 60;
 
   const inElectron = useIsElectron();
 
@@ -347,18 +364,36 @@ export function SettingsPanel() {
               </div>
 
               {dailyLimitEnabled && (
-                <div className="flex items-center justify-between rounded-md bg-muted/30 p-2 border border-border/50 animate-in fade-in slide-in-from-top-1 duration-200">
-                  <p className="text-[10px] text-muted-foreground">Bloquear tras (horas):</p>
-                  <div className="flex items-center gap-1.5 focus-within:text-foreground transition-colors">
-                    <input 
-                      type="number"
-                      min={1} max={24}
-                      value={dailyLimitHours}
-                      onChange={(e) => setDailyLimitHours(parseInt(e.target.value) || 1)}
-                      className="h-5 w-8 rounded border border-border bg-background text-center text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-primary/40 transition-shadow"
-                    />
-                    <span className="text-[10px] font-medium text-muted-foreground/60">h</span>
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div className="flex items-center justify-between rounded-md bg-muted/30 p-2 border border-border/50">
+                    <p className="text-[10px] text-muted-foreground">Bloquear tras:</p>
+                    <div className="flex items-center gap-1 focus-within:text-foreground transition-colors">
+                      <input
+                        type="number"
+                        min={0} max={23}
+                        value={limitH}
+                        onChange={(e) => handleLimitHChange(parseInt(e.target.value) || 0)}
+                        className="h-5 w-8 rounded border border-border bg-background text-center text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-primary/40 transition-shadow"
+                      />
+                      <span className="text-[10px] font-medium text-muted-foreground/60">h</span>
+                      <input
+                        type="number"
+                        min={0} max={59}
+                        value={limitM}
+                        onChange={(e) => handleLimitMChange(parseInt(e.target.value) || 0)}
+                        className="h-5 w-8 rounded border border-border bg-background text-center text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-primary/40 transition-shadow"
+                      />
+                      <span className="text-[10px] font-medium text-muted-foreground/60">m</span>
+                    </div>
                   </div>
+                  {limitExceeded && (
+                    <div className="flex items-center gap-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 px-2 py-1.5">
+                      <IconAlertCircle size={11} className="shrink-0 text-amber-500" />
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-tight">
+                        El tiempo de hoy ya supera este límite. La app se bloqueará al guardar.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

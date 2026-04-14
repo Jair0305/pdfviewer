@@ -18,6 +18,7 @@ import { useAnotacionesStore } from "@/state/anotaciones.store";
 import { useRevisionStore } from "@/state/revision.store";
 import { useEditorStore } from "@/state/editor.store";
 import { useExplorerStore } from "@/state/explorer.store";
+import { useWorkbenchStore } from "@/state/workbench.store";
 import type { Annotation, AnnotationColor } from "@/types/anotaciones";
 import type { FileNode } from "@/types/expediente";
 import { cn } from "@/lib/utils";
@@ -208,17 +209,20 @@ export function NotesPanel() {
   } = useAnotacionesStore();
 
   const { isLoaded: revLoaded, meta, isOutsideClientes } = useRevisionStore();
-  const activeTab = useEditorStore((s) => s.activeTab());
   const { openFile } = useEditorStore();
   const { root } = useExplorerStore();
-  const currentVisiblePage = useAnotacionesStore((s) => s.currentVisiblePage);
+  const { focusedPane, splitFile, setSplitFile, paneState } = useWorkbenchStore();
 
-  // Relative path of the currently open file (if any)
+  // Derive current file and page from the focused pane — updates instantly on focus switch
+  const focusedFile        = paneState[focusedPane].file;
+  const currentVisiblePage = paneState[focusedPane].currentPage;
+
+  // Relative path of the focused pane's file (if any)
   const activeRelativePath = useMemo(() => {
-    if (!activeTab) return null;
-    if (meta) return relativeFrom(activeTab.path, meta.expedientePath);
-    return `/${activeTab.name}`;
-  }, [activeTab, meta]);
+    if (!focusedFile) return null;
+    if (meta) return relativeFrom(focusedFile.path, meta.expedientePath);
+    return `/${focusedFile.name}`;
+  }, [focusedFile, meta]);
 
   // ── Add manual note for the currently open file ───────────────────────────
 
@@ -269,16 +273,17 @@ export function NotesPanel() {
 
     const absFwd = absoluteFrom(expPath, annotation.relativeFilePath);
     const node   = findFileNode(root, absFwd);
+    const fileNode = node ?? { id: absFwd, name: annotation.relativeFilePath.split("/").filter(Boolean).pop() ?? "", type: "pdf" as const, path: absFwd, loaded: true };
 
-    if (node) {
-      openFile(node);
+    // Route file to the focused pane
+    if (focusedPane === "right" && splitFile !== null) {
+      setSplitFile(fileNode);
     } else {
-      const name = annotation.relativeFilePath.split("/").filter(Boolean).pop() ?? "";
-      openFile({ id: absFwd, name, type: "pdf", path: absFwd, loaded: true });
+      openFile(fileNode);
     }
 
     // Always navigate (even doc-level notes → page 1), passing the ID for flash effect
-    navigateTo(absFwd, pageNumber, annotation.id);
+    navigateTo(absFwd, pageNumber, annotation.id, focusedPane);
   };
 
   // ── Group annotations into tree ───────────────────────────────────────────
@@ -335,7 +340,7 @@ export function NotesPanel() {
         <div className="flex shrink-0 items-center gap-2 border-b bg-muted/10 px-3 py-1.5">
           <IconFilePlus size={11} className="shrink-0 text-muted-foreground/60" />
           <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground/70">
-            {activeTab?.name}
+            {focusedFile?.name}
           </span>
           <div className="flex shrink-0 items-center gap-0.5">
             <Button

@@ -15,6 +15,7 @@ import { useRevisionStore } from "@/state/revision.store";
 import { useEditorStore } from "@/state/editor.store";
 import { useExplorerStore } from "@/state/explorer.store";
 import { useAnotacionesStore } from "@/state/anotaciones.store";
+import { useWorkbenchStore } from "@/state/workbench.store";
 import type { Cita } from "@/types/citas";
 import type { AnnotationColor } from "@/types/anotaciones";
 import type { FileNode } from "@/types/expediente";
@@ -142,6 +143,7 @@ export function CitasPanel() {
   const { openFile } = useEditorStore();
   const { root }     = useExplorerStore();
   const { navigateTo } = useAnotacionesStore();
+  const { focusedPane, splitFile, setSplitFile } = useWorkbenchStore();
 
   const handleNavigate = (cita: Cita) => {
     if (!cita.relativeFilePath) return;
@@ -150,15 +152,16 @@ export function CitasPanel() {
 
     const absFwd = absoluteFrom(expPath, cita.relativeFilePath);
     const node   = findFileNode(root, absFwd);
+    const fileNode = node ?? { id: absFwd, name: cita.relativeFilePath.split("/").filter(Boolean).pop() ?? "", type: "pdf" as const, path: absFwd, loaded: true };
 
-    if (node) {
-      openFile(node);
+    // Route file to the focused pane
+    if (focusedPane === "right" && splitFile !== null) {
+      setSplitFile(fileNode);
     } else {
-      const name = cita.relativeFilePath.split("/").filter(Boolean).pop() ?? "";
-      openFile({ id: absFwd, name, type: "pdf", path: absFwd, loaded: true });
+      openFile(fileNode);
     }
 
-    if (cita.pageNumber !== null) navigateTo(absFwd, cita.pageNumber, cita.id);
+    if (cita.pageNumber !== null) navigateTo(absFwd, cita.pageNumber, cita.id, focusedPane);
   };
 
   if (!revLoaded || !isLoaded) {

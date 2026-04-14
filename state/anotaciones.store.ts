@@ -27,7 +27,7 @@ const EMPTY_STATE = {
   isLoaded:            false,
   _revisionPath:       null as string | null,
   editingAnnotationId: null as string | null,
-  pendingNavigation:   null as { filePath: string; pageNumber: number; highlightAnnotationId?: string } | null,
+  pendingNavigation:   null as { filePath: string; pageNumber: number; highlightAnnotationId?: string; targetPane?: "left" | "right" } | null,
   /** "pen" = drawing new strokes; "erase" = click-to-delete; null = view-only */
   annotationMode:      null as "pen" | "erase" | null,
   activeColor:         "yellow" as AnnotationColor,
@@ -43,7 +43,7 @@ interface AnotacionesState {
   isLoaded:            boolean;
   _revisionPath:       string | null;
   editingAnnotationId: string | null;
-  pendingNavigation:   { filePath: string; pageNumber: number; highlightAnnotationId?: string } | null;
+  pendingNavigation:   { filePath: string; pageNumber: number; highlightAnnotationId?: string; targetPane?: "left" | "right" } | null;
   annotationMode:      "pen" | "erase" | null;
   activeColor:         AnnotationColor;
   undoStack:           Annotation[][];
@@ -68,7 +68,7 @@ interface AnotacionesState {
   setEditingAnnotation:   (id: string | null) => void;
   setAnnotationMode:      (mode: "pen" | "erase" | null) => void;
   setActiveColor:         (color: AnnotationColor) => void;
-  navigateTo:             (filePath: string, pageNumber: number, highlightAnnotationId?: string) => void;
+  navigateTo:             (filePath: string, pageNumber: number, highlightAnnotationId?: string, targetPane?: "left" | "right") => void;
   clearPendingNavigation: () => void;
   setCurrentVisiblePage:  (page: number) => void;
 }
@@ -178,7 +178,7 @@ export const useAnotacionesStore = create<AnotacionesState>((set, get) => ({
   setEditingAnnotation:   (id)       => set({ editingAnnotationId: id }),
   setAnnotationMode:      (mode)     => set({ annotationMode: mode }),
   setActiveColor:         (c)        => set({ activeColor: c }),
-  navigateTo:             (fp, pg, hid?) => set({ pendingNavigation: { filePath: fp, pageNumber: pg, highlightAnnotationId: hid } }),
+  navigateTo:             (fp, pg, hid?, pane?) => set({ pendingNavigation: { filePath: fp, pageNumber: pg, highlightAnnotationId: hid, targetPane: pane } }),
   clearPendingNavigation: ()         => set({ pendingNavigation: null }),
   setCurrentVisiblePage:  (page)     => set({ currentVisiblePage: page }),
 }));

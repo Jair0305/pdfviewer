@@ -15,7 +15,7 @@ interface UXSettings {
   healthReminders: boolean;
   sessionTimer: boolean;
   dailyLimitEnabled: boolean;
-  dailyLimitHours: number;
+  dailyLimitMinutes: number; // total limit in minutes (e.g. 90 = 1h 30m)
   totalDailyTime: number; // in seconds
   lastSessionReset: string;
   zenMode: boolean;
@@ -23,6 +23,7 @@ interface UXSettings {
   lighthouseMode: boolean;
   ambientSound: 'none' | 'rain' | 'white' | 'cafe';
   eyePulse: boolean;
+  readingMode: boolean;
 }
 
 const DEFAULT_SETTINGS: UXSettings = {
@@ -36,7 +37,7 @@ const DEFAULT_SETTINGS: UXSettings = {
   healthReminders: false,
   sessionTimer: true,
   dailyLimitEnabled: false,
-  dailyLimitHours: 4,
+  dailyLimitMinutes: 240,
   totalDailyTime: 0,
   lastSessionReset: new Date().toISOString(),
   zenMode: false,
@@ -44,6 +45,7 @@ const DEFAULT_SETTINGS: UXSettings = {
   lighthouseMode: false,
   ambientSound: 'none',
   eyePulse: true,
+  readingMode: false,
 };
 
 function loadUXSettings(): UXSettings {
@@ -77,10 +79,13 @@ interface UXState extends UXSettings {
   setLighthouseMode: (val: boolean) => void;
   setAmbientSound: (val: 'none' | 'rain' | 'white' | 'cafe') => void;
   setEyePulse: (val: boolean) => void;
+  setReadingMode: (val: boolean) => void;
   setDailyLimitEnabled: (val: boolean) => void;
-  setDailyLimitHours: (val: number) => void;
+  setDailyLimitMinutes: (val: number) => void;
   addTime: (seconds: number) => void;
   resetTotalTime: () => void;
+  /** Unlock for today: resets the accumulated daily time to 0 */
+  unlockSession: () => void;
 }
 
 export const useUXStore = create<UXState>((set, get) => ({
@@ -142,13 +147,17 @@ export const useUXStore = create<UXState>((set, get) => ({
     set({ eyePulse: val });
     persist({ ...get(), eyePulse: val });
   },
+  setReadingMode: (val) => {
+    set({ readingMode: val });
+    persist({ ...get(), readingMode: val });
+  },
   setDailyLimitEnabled: (val) => {
     set({ dailyLimitEnabled: val });
     persist({ ...get(), dailyLimitEnabled: val });
   },
-  setDailyLimitHours: (val) => {
-    set({ dailyLimitHours: val });
-    persist({ ...get(), dailyLimitHours: val });
+  setDailyLimitMinutes: (val) => {
+    set({ dailyLimitMinutes: val });
+    persist({ ...get(), dailyLimitMinutes: val });
   },
   addTime: (seconds) => {
     const next = get().totalDailyTime + seconds;
@@ -156,6 +165,11 @@ export const useUXStore = create<UXState>((set, get) => ({
     persist({ ...get(), totalDailyTime: next });
   },
   resetTotalTime: () => {
+    const reset = new Date().toISOString();
+    set({ totalDailyTime: 0, lastSessionReset: reset });
+    persist({ ...get(), totalDailyTime: 0, lastSessionReset: reset });
+  },
+  unlockSession: () => {
     const reset = new Date().toISOString();
     set({ totalDailyTime: 0, lastSessionReset: reset });
     persist({ ...get(), totalDailyTime: 0, lastSessionReset: reset });
