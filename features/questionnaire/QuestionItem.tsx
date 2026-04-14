@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { IconCheck, IconX } from "@tabler/icons-react";
+import { useAudioFeedback } from "@/hooks/useAudioFeedback";
 import type { Question, AnswerValue } from "@/types/expediente";
 
 interface QuestionItemProps {
@@ -13,7 +14,10 @@ interface QuestionItemProps {
 }
 
 export function QuestionItem({ question, value, onAnswer, index }: QuestionItemProps) {
+  const { playTick } = useAudioFeedback();
+
   const handleToggle = (btn: "yes" | "no") => {
+    playTick();
     onAnswer(value === btn ? null : btn);
   };
 

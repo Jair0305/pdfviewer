@@ -8,7 +8,11 @@ interface UXSettings {
   privacyBlur: boolean;
   fovealFocus: boolean;
   autoReadingMode: boolean;
-  readingModeStartHour: number; // 24h format, default 20 (8 PM)
+  readingModeStartHour: number;
+  progressiveDisclosure: boolean;
+  contextTinting: boolean;
+  microAudio: boolean;
+  healthReminders: boolean;
 }
 
 const DEFAULT_SETTINGS: UXSettings = {
@@ -16,6 +20,10 @@ const DEFAULT_SETTINGS: UXSettings = {
   fovealFocus: true,
   autoReadingMode: false,
   readingModeStartHour: 20,
+  progressiveDisclosure: false,
+  contextTinting: false,
+  microAudio: false,
+  healthReminders: false,
 };
 
 function loadUXSettings(): UXSettings {
@@ -39,6 +47,10 @@ interface UXState extends UXSettings {
   setFovealFocus: (val: boolean) => void;
   setAutoReadingMode: (val: boolean) => void;
   setReadingModeStartHour: (hour: number) => void;
+  setProgressiveDisclosure: (val: boolean) => void;
+  setContextTinting: (val: boolean) => void;
+  setMicroAudio: (val: boolean) => void;
+  setHealthReminders: (val: boolean) => void;
 }
 
 export const useUXStore = create<UXState>((set, get) => ({
@@ -59,5 +71,21 @@ export const useUXStore = create<UXState>((set, get) => ({
   setReadingModeStartHour: (hour) => {
     set({ readingModeStartHour: hour });
     persist({ ...get(), readingModeStartHour: hour });
+  },
+  setProgressiveDisclosure: (val) => {
+    set({ progressiveDisclosure: val });
+    persist({ ...get(), progressiveDisclosure: val });
+  },
+  setContextTinting: (val) => {
+    set({ contextTinting: val });
+    persist({ ...get(), contextTinting: val });
+  },
+  setMicroAudio: (val) => {
+    set({ microAudio: val });
+    persist({ ...get(), microAudio: val });
+  },
+  setHealthReminders: (val) => {
+    set({ healthReminders: val });
+    persist({ ...get(), healthReminders: val });
   },
 }));

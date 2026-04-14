@@ -38,6 +38,7 @@ import { useWorkbenchStore } from "@/state/workbench.store";
 import { useUXStore } from "@/state/ux.store";
 import { AnnotationOverlay, toCanonicalRect } from "@/features/annotations/AnnotationOverlay";
 import { DocStatusButton } from "@/features/pdf-viewer/DocStatusButton";
+import { PdfMinimap } from "@/features/pdf-viewer/PdfMinimap";
 import { cn } from "@/lib/utils";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -284,12 +285,20 @@ export function PdfViewer({ file }: PdfViewerProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const blobUrlRef = useRef<string | null>(null);
 
-  // Per-file rotation (view-only, not saved to disk)
+  // Per-page rotation (view-only, not saved to disk)
   const { pageRotations, setPageRotation } = useEditorStore();
-  const rotation = (file ? (pageRotations[file.path] ?? 0) : 0) as 0 | 90 | 180 | 270;
+  
+  const getPageRotation = useCallback((pageNum: number) => {
+    if (!file) return 0;
+    const key = `${file.path}:${pageNum}`;
+    return (pageRotations[key] ?? 0) as 0 | 90 | 180 | 270;
+  }, [file, pageRotations]);
 
-  const rotateLeft  = () => file && setPageRotation(file.path, rotation - 90);
-  const rotateRight = () => file && setPageRotation(file.path, rotation + 90);
+  const rotation = getPageRotation(currentPage); // For toolbar display
+
+  const rotateLeft  = () => file && setPageRotation(`${file.path}:${currentPage}`, rotation - 90);
+  const rotateRight = () => file && setPageRotation(`${file.path}:${currentPage}`, rotation + 90);
+  const resetRotation = () => file && setPageRotation(`${file.path}:${currentPage}`, 0);
 
   // Refs for scroll-based page tracking
   const mainScrollRef   = useRef<HTMLDivElement>(null);
@@ -693,6 +702,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
       const intrinsic  = pageIntrinsics[pageNum] ?? { w: 595, h: 842 };
       const canonW     = intrinsic.w * scale;
       const canonH     = intrinsic.h * scale;
+      const rotation   = getPageRotation(pageNum);
 
       const normalizedRects: NormalizedRect[] = clientRects.map((r) =>
         toCanonicalRect(
@@ -713,7 +723,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
         selectedText,
       });
     }, 0);
-  }, [annotationMode, pageIntrinsics, scale, rotation]);
+  }, [annotationMode, pageIntrinsics, scale, getPageRotation]);
 
   const handleHighlightFromBubble = useCallback((color: AnnotationColor) => {
     if (!selectionBubble || !relativeFilePath) return;
@@ -887,7 +897,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
           <IconRotate size={13} />
         </Button>
         <button
-          onClick={() => file && setPageRotation(file.path, 0)}
+          onClick={resetRotation}
           className="min-w-[32px] rounded px-1 text-center text-xs tabular-nums text-muted-foreground hover:bg-accent"
           title="Restablecer rotación"
         >
@@ -1041,7 +1051,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
                       <Page
                         pageNumber={pageNum}
                         width={88}
-                        rotate={rotation}
+                        rotate={getPageRotation(pageNum)}
                         renderTextLayer={false}
                         renderAnnotationLayer={false}
                         loading={
@@ -1077,20 +1087,21 @@ export function PdfViewer({ file }: PdfViewerProps) {
                       : [];
 
                     const intrinsic = pageIntrinsics[pageNum] ?? { w: 595, h: 842 };
+                    const pageRotation = getPageRotation(pageNum);
 
                     // Display dimensions at current (visual) scale
-                    const pageW = rotation === 90 || rotation === 270
+                    const pageW = pageRotation === 90 || pageRotation === 270
                       ? intrinsic.h * scale
                       : intrinsic.w * scale;
-                    const pageH = rotation === 90 || rotation === 270
+                    const pageH = pageRotation === 90 || pageRotation === 270
                       ? intrinsic.w * scale
                       : intrinsic.h * scale;
 
                     // Rendered dimensions at the debounced scale
-                    const renderPageW = rotation === 90 || rotation === 270
+                    const renderPageW = pageRotation === 90 || pageRotation === 270
                       ? intrinsic.h * renderScale
                       : intrinsic.w * renderScale;
-                    const renderPageH = rotation === 90 || rotation === 270
+                    const renderPageH = pageRotation === 90 || pageRotation === 270
                       ? intrinsic.w * renderScale
                       : intrinsic.h * renderScale;
 
@@ -1128,7 +1139,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
                           <Page
                             pageNumber={pageNum}
                             scale={renderScale}
-                            rotate={rotation}
+                            rotate={getPageRotation(pageNum)}
                             renderTextLayer
                             renderAnnotationLayer
                             onRenderSuccess={({ originalWidth, originalHeight }) => {
@@ -1163,7 +1174,7 @@ export function PdfViewer({ file }: PdfViewerProps) {
                         <AnnotationOverlay
                           pageNumber={pageNum}
                           scale={scale}
-                          rotation={rotation}
+                          rotation={pageRotation}
                           intrinsicWidth={intrinsic.w}
                           intrinsicHeight={intrinsic.h}
                           annotationMode={annotationMode}
@@ -1205,6 +1216,16 @@ export function PdfViewer({ file }: PdfViewerProps) {
                   })}
               </div>
             </div>
+
+            {/* ── Minimap sidebar ────────────────────────────────────────── */}
+            <PdfMinimap
+              numPages={numPages}
+              currentPage={currentPage}
+              annotations={annotations}
+              relativeFilePath={relativeFilePath}
+              mainScrollRef={mainScrollRef}
+              scrollToPage={scrollToPage}
+            />
           </Document>
         )}
       </div>

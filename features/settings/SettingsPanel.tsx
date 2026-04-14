@@ -107,7 +107,11 @@ export function SettingsPanel() {
     privacyBlur, setPrivacyBlur,
     fovealFocus, setFovealFocus,
     autoReadingMode, setAutoReadingMode,
-    readingModeStartHour, setReadingModeStartHour
+    readingModeStartHour, setReadingModeStartHour,
+    progressiveDisclosure, setProgressiveDisclosure,
+    contextTinting, setContextTinting,
+    microAudio, setMicroAudio,
+    healthReminders, setHealthReminders
   } = useUXStore();
 
   const inElectron = useIsElectron();
@@ -231,6 +235,72 @@ export function SettingsPanel() {
                   </div>
                 </div>
               )}
+            </div>
+
+            <Separator className="opacity-50" />
+
+            {/* Progressive Disclosure */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-medium text-foreground">Progressive Disclosure</p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">Enfoca solo la pregunta activa en el cuestionario, atenuando el resto.</p>
+              </div>
+              <Button 
+                variant={progressiveDisclosure ? "default" : "outline"} 
+                size="sm" 
+                className={cn("h-6 w-10 shrink-0 px-0 transition-all", progressiveDisclosure && "bg-primary text-primary-foreground font-bold")}
+                onClick={() => setProgressiveDisclosure(!progressiveDisclosure)}
+              >
+                <span className="text-[9px] uppercase">{progressiveDisclosure ? "ON" : "OFF"}</span>
+              </Button>
+            </div>
+
+            {/* Context Tinting */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-medium text-foreground">Tintado de Contexto</p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">Colorea sutilmente la app según el tipo de expediente para reconocimiento rápido.</p>
+              </div>
+              <Button 
+                variant={contextTinting ? "default" : "outline"} 
+                size="sm" 
+                className={cn("h-6 w-10 shrink-0 px-0 transition-all", contextTinting && "bg-primary text-primary-foreground font-bold")}
+                onClick={() => setContextTinting(!contextTinting)}
+              >
+                <span className="text-[9px] uppercase">{contextTinting ? "ON" : "OFF"}</span>
+              </Button>
+            </div>
+
+            {/* Micro Audio */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-medium text-foreground">Micro-Audio Háptico</p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">Sonidos sutiles para confirmar interacciones (vía altavoz).</p>
+              </div>
+              <Button 
+                variant={microAudio ? "default" : "outline"} 
+                size="sm" 
+                className={cn("h-6 w-10 shrink-0 px-0 transition-all", microAudio && "bg-primary text-primary-foreground font-bold")}
+                onClick={() => setMicroAudio(!microAudio)}
+              >
+                <span className="text-[9px] uppercase">{microAudio ? "ON" : "OFF"}</span>
+              </Button>
+            </div>
+
+            {/* Health Reminders */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-medium text-foreground">Recordatorios de Salud</p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">Avisos de descanso automáticos cada 50 minutos de flujo profundo.</p>
+              </div>
+              <Button 
+                variant={healthReminders ? "default" : "outline"} 
+                size="sm" 
+                className={cn("h-6 w-10 shrink-0 px-0 transition-all", healthReminders && "bg-primary text-primary-foreground font-bold")}
+                onClick={() => setHealthReminders(!healthReminders)}
+              >
+                <span className="text-[9px] uppercase">{healthReminders ? "ON" : "OFF"}</span>
+              </Button>
             </div>
           </div>
         </section>

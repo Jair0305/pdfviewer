@@ -10,6 +10,7 @@ import { FileExplorer } from "@/features/file-explorer/FileExplorer";
 import { SearchPanel } from "@/features/search/SearchPanel";
 import { SettingsPanel } from "@/features/settings/SettingsPanel";
 import { RightPanel } from "./RightPanel";
+import { HealthMonitor } from "./HealthMonitor";
 import { useWorkbenchStore } from "@/state/workbench.store";
 import { useEditorStore } from "@/state/editor.store";
 import { useExplorerStore } from "@/state/explorer.store";
@@ -20,9 +21,22 @@ import { useCitasStore } from "@/state/citas.store";
 import { useDocStatusStore } from "@/state/docStatus.store";
 import { useSintesisStore } from "@/state/sintesis.store";
 import { useSettingsStore } from "@/state/settings.store";
+import { useUXStore } from "@/state/ux.store";
 import { QUESTIONNAIRE_TEMPLATE } from "@/config/questionnaire";
 import { useIsElectron } from "@/hooks/useIsElectron";
 import { cn } from "@/lib/utils";
+
+/** Generate a very subtle, desaturated HSL color from a string */
+function getContextColor(str: string | null) {
+  if (!str) return null;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = Math.abs(hash % 360);
+  // Low saturation (15-25%), High lightness (85-95%) for a "ghost" tint
+  return `hsla(${h}, 20%, 50%, 0.03)`;
+}
 import type { Tab } from "@/types/expediente";
 
 // ─── Session persistence ──────────────────────────────────────────────────────
@@ -93,10 +107,13 @@ export function WorkbenchLayout() {
   const { loadDocStatus, unloadDocStatus }     = useDocStatusStore();
   const { loadSintesis, unloadSintesis }       = useSintesisStore();
   const { clientesFolder, revisionesFolder } = useSettingsStore();
-  const revisionPath = useRevisionStore((s) => s.revisionPath);
+  const { contextTinting } = useUXStore();
+  const { revisionPath, meta } = useRevisionStore();
   const inElectron = useIsElectron();
   const sidebarRef    = usePanelRef();
   const rightPanelRef = usePanelRef();
+
+  const contextColor = (contextTinting && meta) ? getContextColor(meta.expedienteId) : null;
 
   // Track sidebar size to detect collapse → expand transitions
   const prevSidebarSizeRef     = useRef<number>(22);
@@ -252,7 +269,11 @@ export function WorkbenchLayout() {
   const activeFile = activeTab();
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+    <div 
+      className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground transition-colors duration-1000"
+      style={{ backgroundColor: contextColor || undefined }}
+    >
+      <HealthMonitor />
       {/* ── Main area ──────────────────────────────────────────────────── */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Activity Bar */}

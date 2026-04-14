@@ -17,7 +17,9 @@ import {
 } from "@tabler/icons-react";
 import { QuestionItem } from "./QuestionItem";
 import { useRevisionStore } from "@/state/revision.store";
+import { useUXStore } from "@/state/ux.store";
 import type { Question } from "@/types/expediente";
+import { cn } from "@/lib/utils";
 
 interface QuestionnaireProps {
   questions: Question[];
@@ -26,6 +28,7 @@ interface QuestionnaireProps {
 export function Questionnaire({ questions }: QuestionnaireProps) {
   const { isLoaded, meta, warning, isOutsideClientes, dismissWarning, getAnswers, getProgress, setAnswer } =
     useRevisionStore();
+  const { progressiveDisclosure } = useUXStore();
 
   const answers  = getAnswers();
   const progress = getProgress(questions.length);
@@ -157,7 +160,7 @@ export function Questionnaire({ questions }: QuestionnaireProps) {
               const percent = qs.length > 0 ? (answeredCount / qs.length) * 100 : 0;
 
               return (
-              <div key={category}>
+              <div key={category} className={cn("transition-all duration-300", progressiveDisclosure && "group/category")}>
                 <div className="flex items-center justify-between mb-2 px-1">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
                     {category}
@@ -171,13 +174,20 @@ export function Questionnaire({ questions }: QuestionnaireProps) {
                 </div>
                 <div className="flex flex-col rounded-lg border border-border/40 shadow-sm overflow-hidden bg-background">
                   {qs.map((q, i) => (
-                    <QuestionItem
+                    <div 
                       key={q.id}
-                      question={q}
-                      value={answers[q.id]?.value ?? null}
-                      onAnswer={(val) => setAnswer(q.id, val)}
-                      index={i + 1}
-                    />
+                      className={cn(
+                        "transition-all duration-500",
+                        progressiveDisclosure && "group-hover/category:opacity-30 hover:!opacity-100 focus-within:!opacity-100"
+                      )}
+                    >
+                      <QuestionItem
+                        question={q}
+                        value={answers[q.id]?.value ?? null}
+                        onAnswer={(val) => setAnswer(q.id, val)}
+                        index={i + 1}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>
