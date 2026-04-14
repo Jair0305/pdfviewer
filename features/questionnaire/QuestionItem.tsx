@@ -4,59 +4,79 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { useAudioFeedback } from "@/hooks/useAudioFeedback";
+import { useUXStore } from "@/state/ux.store";
 import type { Question, AnswerValue } from "@/types/expediente";
+
+function BionicText({ text }: { text: string }) {
+  const words = text.split(" ");
+  return (
+    <>
+      {words.map((word, i) => {
+        const mid = Math.ceil(word.length / 2);
+        const bold = word.slice(0, mid);
+        const rest = word.slice(mid);
+        return (
+          <span key={i} className="mr-1 inline-block">
+            <span className="font-bold text-foreground/90">{bold}</span>
+            <span className="opacity-70">{rest}</span>
+          </span>
+        );
+      })}
+    </>
+  );
+}
 
 interface QuestionItemProps {
   question: Question;
   value: AnswerValue;
   onAnswer: (value: AnswerValue) => void;
   index: number;
+  isFocused?: boolean;
 }
 
-export function QuestionItem({ question, value, onAnswer, index }: QuestionItemProps) {
+export function QuestionItem({ question, value, onAnswer, index, isFocused }: QuestionItemProps) {
   const { playTick } = useAudioFeedback();
+  const { bionicReading } = useUXStore();
 
-  const handleToggle = (btn: "yes" | "no") => {
+  const handleToggle = (newValue: AnswerValue) => {
     playTick();
-    onAnswer(value === btn ? null : btn);
+    onAnswer(value === newValue ? null : newValue);
   };
 
   return (
-    <div
+    <div 
       className={cn(
-        "group relative flex flex-col gap-3 border-b border-border/50 py-4 px-4 transition-all duration-300",
-        value === "yes" && "bg-green-500/[0.03]",
-        value === "no" && "bg-destructive/[0.03]",
-        value === null && "hover:bg-muted/[0.15]",
+        "group/item relative flex flex-col gap-3 rounded-xl border border-border/40 bg-muted/20 p-4 transition-all duration-300",
+        "hover:bg-background hover:border-primary/20 hover:shadow-md"
       )}
     >
-      {/* Decorative indicator: Thicker and with a soft glow when active */}
+      {/* Decorative indicator */}
       <div
         className={cn(
           "absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full transition-all duration-500",
           value === "yes" ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]" : 
           value === "no" ? "bg-destructive shadow-[0_0_10px_rgba(239,68,68,0.3)]" : 
-          "bg-transparent group-hover:bg-muted-foreground/20"
+          "bg-transparent group-hover/item:bg-muted-foreground/20"
         )}
       />
-      
+
       <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-3 pl-1">
           {/* Index: subtle monospace for structure */}
           <span className="mt-1 shrink-0 text-[10px] font-mono font-medium text-muted-foreground/40 select-none">
             {String(index).padStart(2, "0")}
           </span>
 
           {/* Question text: relaxed leading for health-focused readability */}
-          <p className={cn(
+          <div className={cn(
             "text-[13px] leading-relaxed transition-colors duration-300",
             value ? "text-foreground font-medium" : "text-foreground/80"
           )}>
-            {question.text}
+            {bionicReading ? <BionicText text={question.text} /> : question.text}
             {question.required && (
               <span className="ml-1 text-destructive/60 font-bold" title="Obligatoria">*</span>
             )}
-          </p>
+          </div>
         </div>
 
         {/* Answer buttons: tactile and clear */}

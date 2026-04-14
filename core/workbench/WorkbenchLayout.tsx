@@ -26,18 +26,18 @@ import { QUESTIONNAIRE_TEMPLATE } from "@/config/questionnaire";
 import { useIsElectron } from "@/hooks/useIsElectron";
 import { cn } from "@/lib/utils";
 
-/** Generate a very subtle, desaturated HSL color from a string */
-function getContextColor(str: string | null) {
-  if (!str) return null;
+import { IconFocusCentered } from "@tabler/icons-react";
+import type { Tab } from "@/types/expediente";
+
+function getTintStyle(id: string | null) {
+  if (!id) return undefined;
   let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash);
   }
   const h = Math.abs(hash % 360);
-  // Low saturation (15-25%), High lightness (85-95%) for a "ghost" tint
-  return `hsla(${h}, 20%, 50%, 0.03)`;
+  return `linear-gradient(135deg, hsla(${h}, 25%, 50%, 0.04) 0%, transparent 100%)`;
 }
-import type { Tab } from "@/types/expediente";
 
 // ─── Session persistence ──────────────────────────────────────────────────────
 
@@ -50,6 +50,7 @@ interface SessionState {
   activeTabId: string | null;
   sidebarSize?: number;    // last expanded percentage
   rightPanelSize?: number; // last percentage
+  activeSidebarView: string | null;
 }
 
 function loadSession(): SessionState | null {
@@ -107,13 +108,11 @@ export function WorkbenchLayout() {
   const { loadDocStatus, unloadDocStatus }     = useDocStatusStore();
   const { loadSintesis, unloadSintesis }       = useSintesisStore();
   const { clientesFolder, revisionesFolder } = useSettingsStore();
-  const { contextTinting } = useUXStore();
+  const { contextTinting, zenMode } = useUXStore();
   const { revisionPath, meta } = useRevisionStore();
   const inElectron = useIsElectron();
   const sidebarRef    = usePanelRef();
   const rightPanelRef = usePanelRef();
-
-  const contextColor = (contextTinting && meta) ? getContextColor(meta.expedienteId) : null;
 
   // Track sidebar size to detect collapse → expand transitions
   const prevSidebarSizeRef     = useRef<number>(22);
@@ -151,6 +150,10 @@ export function WorkbenchLayout() {
       openDirectoryByPath(session.rootPath, session.expandedPaths);
     }
 
+    if (session.activeSidebarView) {
+      setSidebarView(session.activeSidebarView as any);
+    }
+
     // Restore panel sizes after panels have mounted
     requestAnimationFrame(() => {
       if (session.sidebarSize && session.sidebarSize > 0) {
@@ -162,13 +165,15 @@ export function WorkbenchLayout() {
         rightPanelSizeRef.current = session.rightPanelSize;
       }
     });
-  }, [inElectron, openDirectoryByPath, restoreTabs]);
+  }, [inElectron, openDirectoryByPath, restoreTabs, setSidebarView]);
 
   // ── Session save on window close ───────────────────────────────────────────
   useEffect(() => {
     const handleBeforeUnload = () => {
       const { root: currentRoot, expandedPaths } = useExplorerStore.getState();
       const { tabs, activeTabId } = useEditorStore.getState();
+      const { activeSidebarView } = useWorkbenchStore.getState();
+
       saveSession({
         rootPath: currentRoot?.path ?? null,
         expandedPaths: [...expandedPaths],
@@ -176,11 +181,22 @@ export function WorkbenchLayout() {
         activeTabId,
         sidebarSize:    sidebarExpandedSizeRef.current,
         rightPanelSize: rightPanelSizeRef.current,
+        activeSidebarView,
       });
     };
+
     window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
+    // Also save periodically or on visibility change as backup
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") handleBeforeUnload();
+    };
+    window.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [sidebarExpandedSizeRef, rightPanelSizeRef]);
 
   // ── Load / unload revision when the explorer root changes ─────────────────
   useEffect(() => {
@@ -237,22 +253,15 @@ export function WorkbenchLayout() {
 
     // Granular watcher events → surgical tree mutations (no full reload)
     const offAdd = window.api.onFsAdd(({ path, parentPath, name }) => {
-      console.log(`[FS EVENT] add: ${path}`);
       addFileToTree(path, parentPath, name);
     });
-
     const offAddDir = window.api.onFsAddDir(({ path, parentPath, name }) => {
-      console.log(`[FS EVENT] addDir: ${path}`);
       addFolderToTree(path, parentPath, name);
     });
-
     const offRemove = window.api.onFsRemove(({ path }) => {
-      console.log(`[FS EVENT] remove: ${path}`);
       removeFromTree(path);
     });
-
     const offRemoveDir = window.api.onFsRemoveDir(({ path }) => {
-      console.log(`[FS EVENT] removeDir: ${path}`);
       removeFromTree(path);
     });
 
@@ -268,49 +277,77 @@ export function WorkbenchLayout() {
 
   const activeFile = activeTab();
 
+  const [showIntro, setShowIntro] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowIntro(false), 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div 
-      className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground transition-colors duration-1000"
-      style={{ backgroundColor: contextColor || undefined }}
+      className={cn(
+        "flex h-screen flex-col overflow-hidden bg-background transition-colors duration-1000",
+      )}
+      style={{
+        background: contextTinting && meta?.expedienteId ? getTintStyle(meta.expedienteId) : undefined
+      }}
     >
       <HealthMonitor />
+
+      {showIntro && (
+        <div className="fixed inset-0 z-[30000] flex flex-col items-center justify-center bg-background pointer-events-none animate-out fade-out duration-1000 fill-mode-forwards">
+          <div className="flex flex-col items-center gap-4 text-center animate-in zoom-in-95 duration-700">
+            <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-lg shadow-primary/5">
+              <IconFocusCentered size={24} className="text-primary animate-pulse" />
+            </div>
+            <div className="space-y-1">
+              <h1 className="text-sm font-bold tracking-[0.3em] uppercase text-foreground/80">Espacio de Foco</h1>
+              <p className="text-[10px] text-muted-foreground/60 font-medium">Preparando entorno sanitario...</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Main area ──────────────────────────────────────────────────── */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Activity Bar */}
-        <ActivityBar />
+        {!zenMode && <ActivityBar />}
 
         {/* Sidebar + Editor */}
         <PanelGroup orientation="horizontal" className="flex-1">
           {/* Sidebar */}
-          <Panel
-            panelRef={sidebarRef}
-            defaultSize={22}
-            minSize="160px"
-            collapsible
-            collapsedSize={0}
-            onResize={(size) => {
-              const pct = size.asPercentage;
-              if (pct === 0) {
-                handlePanelCollapse();
-              } else {
-                if (prevSidebarSizeRef.current === 0) {
-                  // Transitioning from collapsed → expanded: force virtual list remount
-                  setSidebarKey((k) => k + 1);
-                }
-                sidebarExpandedSizeRef.current = pct;
-              }
-              prevSidebarSizeRef.current = pct;
-            }}
-            style={{ overflow: "hidden" }}
-          >
-            <div key={sidebarKey} className="flex h-full w-full flex-col overflow-hidden bg-muted/10">
-              {activeSidebarView === "explorer" && <FileExplorer />}
-              {activeSidebarView === "search"   && <SearchPanel />}
-              {activeSidebarView === "settings" && <SettingsPanel />}
-            </div>
-          </Panel>
-
-          <ResizeHandle />
+          {!zenMode && (
+            <>
+              <Panel
+                panelRef={sidebarRef}
+                defaultSize={22}
+                minSize="160px"
+                collapsible
+                collapsedSize={0}
+                onResize={(size) => {
+                  if (size === 0) {
+                    handlePanelCollapse();
+                  } else {
+                    if (prevSidebarSizeRef.current === 0) {
+                      // Transitioning from collapsed → expanded: force virtual list remount
+                      setSidebarKey((k) => k + 1);
+                    }
+                    sidebarExpandedSizeRef.current = size;
+                  }
+                  prevSidebarSizeRef.current = size;
+                }}
+                style={{ overflow: "hidden" }}
+              >
+                <div key={sidebarKey} className="flex h-full w-full flex-col overflow-hidden bg-muted/10">
+                  {activeSidebarView === "explorer" && <FileExplorer />}
+                  {activeSidebarView === "search"   && <SearchPanel />}
+                  {activeSidebarView === "settings" && <SettingsPanel />}
+                </div>
+              </Panel>
+              <ResizeHandle />
+            </>
+          )}
 
           {/* Editor area */}
           <Panel style={{ overflow: "hidden" }}>
@@ -329,20 +366,23 @@ export function WorkbenchLayout() {
                     <PdfViewer file={activeFile} />
                   </Panel>
 
-                  <ResizeHandle />
-
                   {/* Right panel: Cuestionario / Notas tabs */}
-                  <Panel
-                    panelRef={rightPanelRef}
-                    defaultSize={36}
-                    minSize="200px"
-                    style={{ overflow: "hidden" }}
-                    onResize={(size) => {
-                      rightPanelSizeRef.current = size.asPercentage;
-                    }}
-                  >
-                    <RightPanel questions={QUESTIONNAIRE_TEMPLATE} />
-                  </Panel>
+                  {!zenMode && (
+                    <>
+                      <ResizeHandle />
+                      <Panel
+                        panelRef={rightPanelRef}
+                        defaultSize={36}
+                        minSize="200px"
+                        style={{ overflow: "hidden" }}
+                        onResize={(size) => {
+                          rightPanelSizeRef.current = size;
+                        }}
+                      >
+                        <RightPanel questions={QUESTIONNAIRE_TEMPLATE} />
+                      </Panel>
+                    </>
+                  )}
                 </PanelGroup>
               </div>
             </div>
@@ -351,22 +391,24 @@ export function WorkbenchLayout() {
       </div>
 
       {/* ── Status bar ─────────────────────────────────────────────────── */}
-      <footer className="flex h-[22px] shrink-0 items-center gap-3 bg-muted/80 px-3 text-muted-foreground border-t border-border">
-        <span className="text-[11px] font-medium">
-          {indexStatus.state === "indexing" && `Indexando… ${indexStatus.total} archivos`}
-          {indexStatus.state === "complete"  && `${indexStatus.total} archivos indexados`}
-          {indexStatus.state === "idle"      && "Listo"}
-        </span>
-        {activeFile && (
-          <>
-            <span className="opacity-40">│</span>
-            <span className="truncate text-[11px] opacity-70">{activeFile.path}</span>
-            <span className="ml-auto shrink-0 text-[11px] font-semibold uppercase tracking-wider opacity-80">
-              {activeFile.type}
-            </span>
-          </>
-        )}
-      </footer>
+      {!zenMode && (
+        <footer className="flex h-[22px] shrink-0 items-center gap-3 bg-muted/80 px-3 text-muted-foreground border-t border-border animate-in slide-in-from-bottom-2 duration-300">
+          <span className="text-[11px] font-medium">
+            {indexStatus.state === "indexing" && `Indexando… ${indexStatus.total} archivos`}
+            {indexStatus.state === "complete"  && `${indexStatus.total} archivos indexados`}
+            {indexStatus.state === "idle"      && "Listo"}
+          </span>
+          {activeFile && (
+            <>
+              <span className="opacity-40">│</span>
+              <span className="truncate text-[11px] opacity-70">{activeFile.path}</span>
+              <span className="ml-auto shrink-0 text-[11px] font-semibold uppercase tracking-wider opacity-80">
+                {activeFile.type}
+              </span>
+            </>
+          )}
+        </footer>
+      )}
     </div>
   );
 }

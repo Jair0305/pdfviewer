@@ -176,10 +176,7 @@ export function Questionnaire({ questions }: QuestionnaireProps) {
                   {qs.map((q, i) => (
                     <div 
                       key={q.id}
-                      className={cn(
-                        "transition-all duration-500",
-                        progressiveDisclosure && "group-hover/category:opacity-30 hover:!opacity-100 focus-within:!opacity-100"
-                      )}
+                      className="transition-all duration-300"
                     >
                       <QuestionItem
                         question={q}

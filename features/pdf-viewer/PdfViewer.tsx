@@ -20,7 +20,8 @@ import {
   IconArrowBackUp,
   IconArrowForwardUp,
   IconQuote,
-  IconFocus2,
+  IconEye,
+  IconFocusCentered,
   IconEyeOff,
   IconSunHigh,
 } from "@tabler/icons-react";
@@ -229,8 +230,18 @@ export function PdfViewer({ file }: PdfViewerProps) {
   const { 
     privacyBlur, 
     autoReadingMode, 
-    readingModeStartHour 
+    readingModeStartHour,
+    zenMode, setZenMode,
+    lighthouseMode
   } = useUXStore();
+
+  const [mouseY, setMouseY] = useState(0);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!lighthouseMode) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMouseY(e.clientY - rect.top);
+  }, [lighthouseMode]);
 
   const [numPages, setNumPages]             = useState(0);
   const [currentPage, setCurrentPage]       = useState(1);
@@ -239,7 +250,6 @@ export function PdfViewer({ file }: PdfViewerProps) {
   const renderScaleTimerRef                 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pageInputValue, setPageInputValue] = useState("1");
   const [showThumbs, setShowThumbs]         = useState(true);
-  const [zenMode, setZenMode]               = useState(false);
   const [readingMode, setReadingMode]       = useState(false);
   const [isFocused, setIsFocused]           = useState(true);
   const [notePopup, setNotePopup]           = useState<NotePopupState | null>(null);
@@ -276,6 +286,23 @@ export function PdfViewer({ file }: PdfViewerProps) {
     const interval = setInterval(checkTime, 60000); // Pulse check every minute
     return () => clearInterval(interval);
   }, [autoReadingMode, readingModeStartHour]);
+
+  // Keyboard shortcut for ZEN MODE (Alt + Z)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Toggle with Alt+Z
+      if (e.altKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        setZenMode(!zenMode);
+      }
+      // Exit with Esc
+      if (e.key === 'Escape' && zenMode) {
+        setZenMode(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [zenMode, setZenMode]);
 
   const [selectionBubble, setSelectionBubble] = useState<SelectionBubbleState | null>(null);
 
@@ -821,6 +848,20 @@ export function PdfViewer({ file }: PdfViewerProps) {
         }
       `}</style>
 
+      {lighthouseMode && (
+        <div 
+          className="pointer-events-none absolute left-0 right-0 z-[50] transition-all duration-75 backdrop-brightness-[1.1] backdrop-contrast-[1.1]"
+          style={{ 
+            top: `${mouseY - 30}px`, 
+            height: '60px',
+            background: 'linear-gradient(to bottom, transparent, rgba(59, 130, 246, 0.05), transparent)',
+            borderTop: '1px solid rgba(59, 130, 246, 0.1)',
+            borderBottom: '1px solid rgba(59, 130, 246, 0.1)',
+            boxShadow: '0 0 100px rgba(59, 130, 246, 0.05)'
+          }}
+        />
+      )}
+
       {!isFocused && (
         <div className="absolute inset-0 z-[10000] flex flex-col items-center justify-center bg-background/20 backdrop-blur-sm">
           <IconEyeOff size={48} className="text-muted-foreground/20 animate-pulse" />
@@ -847,11 +888,17 @@ export function PdfViewer({ file }: PdfViewerProps) {
         <Button
           variant={zenMode ? "default" : "ghost"}
           size="icon"
-          className={cn("h-6 w-6", zenMode && "bg-primary/20 text-primary hover:bg-primary/30 dark:text-primary")}
+          className={cn(
+            "h-6 w-6 relative overflow-hidden transition-all duration-500", 
+            zenMode && "bg-primary text-white shadow-lg ring-2 ring-primary/20 scale-105"
+          )}
           onClick={() => setZenMode(!zenMode)}
-          title={zenMode ? "Salir de Zen Mode (Esc)" : "Zen Mode (Visión de túnel)"}
+          title={zenMode ? "Salir de Modo Zen (Alt+Z / Esc)" : "Modo Zen — Foco Total (Alt+Z)"}
         >
-          <IconFocus2 size={13} />
+          {zenMode ? <IconEye size={13} /> : <IconFocusCentered size={13} />}
+          {zenMode && (
+            <span className="absolute inset-0 bg-white/20 animate-pulse" />
+          )}
         </Button>
 
         {/* Reading Mode / Eye Care */}

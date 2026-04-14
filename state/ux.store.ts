@@ -13,6 +13,16 @@ interface UXSettings {
   contextTinting: boolean;
   microAudio: boolean;
   healthReminders: boolean;
+  sessionTimer: boolean;
+  dailyLimitEnabled: boolean;
+  dailyLimitHours: number;
+  totalDailyTime: number; // in seconds
+  lastSessionReset: string;
+  zenMode: boolean;
+  bionicReading: boolean;
+  lighthouseMode: boolean;
+  ambientSound: 'none' | 'rain' | 'white' | 'cafe';
+  eyePulse: boolean;
 }
 
 const DEFAULT_SETTINGS: UXSettings = {
@@ -24,6 +34,16 @@ const DEFAULT_SETTINGS: UXSettings = {
   contextTinting: false,
   microAudio: false,
   healthReminders: false,
+  sessionTimer: true,
+  dailyLimitEnabled: false,
+  dailyLimitHours: 4,
+  totalDailyTime: 0,
+  lastSessionReset: new Date().toISOString(),
+  zenMode: false,
+  bionicReading: false,
+  lighthouseMode: false,
+  ambientSound: 'none',
+  eyePulse: true,
 };
 
 function loadUXSettings(): UXSettings {
@@ -51,6 +71,16 @@ interface UXState extends UXSettings {
   setContextTinting: (val: boolean) => void;
   setMicroAudio: (val: boolean) => void;
   setHealthReminders: (val: boolean) => void;
+  setSessionTimer: (val: boolean) => void;
+  setZenMode: (val: boolean) => void;
+  setBionicReading: (val: boolean) => void;
+  setLighthouseMode: (val: boolean) => void;
+  setAmbientSound: (val: 'none' | 'rain' | 'white' | 'cafe') => void;
+  setEyePulse: (val: boolean) => void;
+  setDailyLimitEnabled: (val: boolean) => void;
+  setDailyLimitHours: (val: number) => void;
+  addTime: (seconds: number) => void;
+  resetTotalTime: () => void;
 }
 
 export const useUXStore = create<UXState>((set, get) => ({
@@ -87,5 +117,47 @@ export const useUXStore = create<UXState>((set, get) => ({
   setHealthReminders: (val) => {
     set({ healthReminders: val });
     persist({ ...get(), healthReminders: val });
+  },
+  setSessionTimer: (val) => {
+    set({ sessionTimer: val });
+    persist({ ...get(), sessionTimer: val });
+  },
+  setZenMode: (val) => {
+    set({ zenMode: val });
+    persist({ ...get(), zenMode: val });
+  },
+  setBionicReading: (val) => {
+    set({ bionicReading: val });
+    persist({ ...get(), bionicReading: val });
+  },
+  setLighthouseMode: (val) => {
+    set({ lighthouseMode: val });
+    persist({ ...get(), lighthouseMode: val });
+  },
+  setAmbientSound: (val) => {
+    set({ ambientSound: val });
+    persist({ ...get(), ambientSound: val });
+  },
+  setEyePulse: (val) => {
+    set({ eyePulse: val });
+    persist({ ...get(), eyePulse: val });
+  },
+  setDailyLimitEnabled: (val) => {
+    set({ dailyLimitEnabled: val });
+    persist({ ...get(), dailyLimitEnabled: val });
+  },
+  setDailyLimitHours: (val) => {
+    set({ dailyLimitHours: val });
+    persist({ ...get(), dailyLimitHours: val });
+  },
+  addTime: (seconds) => {
+    const next = get().totalDailyTime + seconds;
+    set({ totalDailyTime: next });
+    persist({ ...get(), totalDailyTime: next });
+  },
+  resetTotalTime: () => {
+    const reset = new Date().toISOString();
+    set({ totalDailyTime: 0, lastSessionReset: reset });
+    persist({ ...get(), totalDailyTime: 0, lastSessionReset: reset });
   },
 }));

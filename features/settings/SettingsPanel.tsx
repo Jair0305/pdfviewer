@@ -111,7 +111,15 @@ export function SettingsPanel() {
     progressiveDisclosure, setProgressiveDisclosure,
     contextTinting, setContextTinting,
     microAudio, setMicroAudio,
-    healthReminders, setHealthReminders
+    healthReminders, setHealthReminders,
+    sessionTimer, setSessionTimer,
+    zenMode, setZenMode,
+    bionicReading, setBionicReading,
+    lighthouseMode, setLighthouseMode,
+    ambientSound, setAmbientSound,
+    eyePulse, setEyePulse,
+    dailyLimitEnabled, setDailyLimitEnabled,
+    dailyLimitHours, setDailyLimitHours
   } = useUXStore();
 
   const inElectron = useIsElectron();
@@ -301,6 +309,146 @@ export function SettingsPanel() {
               >
                 <span className="text-[9px] uppercase">{healthReminders ? "ON" : "OFF"}</span>
               </Button>
+            </div>
+
+            <Separator className="opacity-50" />
+
+            {/* Session Timer (WakaTime style) */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-medium text-foreground">Contador de Sesión (WakaTime)</p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">Muestra el tiempo total de actividad en la barra inferior.</p>
+              </div>
+              <Button 
+                variant={sessionTimer ? "default" : "outline"} 
+                size="sm" 
+                className={cn("h-6 w-10 shrink-0 px-0 transition-all", sessionTimer && "bg-primary text-primary-foreground font-bold")}
+                onClick={() => setSessionTimer(!sessionTimer)}
+              >
+                <span className="text-[9px] uppercase">{sessionTimer ? "ON" : "OFF"}</span>
+              </Button>
+            </div>
+
+            {/* Daily Limit */}
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-0.5">
+                  <p className="text-[11px] font-medium text-foreground">Límite Diario de Uso</p>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">Bloquea el acceso a la app tras alcanzar el tiempo configurado.</p>
+                </div>
+                <Button 
+                  variant={dailyLimitEnabled ? "default" : "outline"} 
+                  size="sm" 
+                  className={cn("h-6 w-10 shrink-0 px-0 transition-all", dailyLimitEnabled && "bg-red-500 hover:bg-red-600 text-white font-bold")}
+                  onClick={() => setDailyLimitEnabled(!dailyLimitEnabled)}
+                >
+                  <span className="text-[9px] uppercase">{dailyLimitEnabled ? "LOCK" : "OFF"}</span>
+                </Button>
+              </div>
+
+              {dailyLimitEnabled && (
+                <div className="flex items-center justify-between rounded-md bg-muted/30 p-2 border border-border/50 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <p className="text-[10px] text-muted-foreground">Bloquear tras (horas):</p>
+                  <div className="flex items-center gap-1.5 focus-within:text-foreground transition-colors">
+                    <input 
+                      type="number"
+                      min={1} max={24}
+                      value={dailyLimitHours}
+                      onChange={(e) => setDailyLimitHours(parseInt(e.target.value) || 1)}
+                      className="h-5 w-8 rounded border border-border bg-background text-center text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-primary/40 transition-shadow"
+                    />
+                    <span className="text-[10px] font-medium text-muted-foreground/60">h</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* ── SECCIÓN 3: ENFOQUE AVANZADO (NEURO-UX) ─────────────────────────── */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-4 rounded bg-amber-500/10 flex items-center justify-center">
+              <div className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+            </div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">
+              Enfoque Avanzado (Neuro-UX)
+            </h3>
+          </div>
+
+          <div className="space-y-5 pl-6">
+            {/* Bionic Reading */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-medium text-foreground">Lectura Biónica (Bionic Fixation)</p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">Resalta el inicio de las palabras para acelerar el escaneo mental del texto.</p>
+              </div>
+              <Button 
+                variant={bionicReading ? "default" : "outline"} 
+                size="sm" 
+                className={cn("h-6 w-10 shrink-0 px-0 transition-all", bionicReading && "bg-primary text-primary-foreground font-bold")}
+                onClick={() => setBionicReading(!bionicReading)}
+              >
+                <span className="text-[9px] uppercase">{bionicReading ? "ON" : "OFF"}</span>
+              </Button>
+            </div>
+
+            {/* Lighthouse Mode */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-medium text-foreground">Modo Faro (Lighthouse)</p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">Crea una guía luminosa horizontal para no perder la línea al leer PDF.</p>
+              </div>
+              <Button 
+                variant={lighthouseMode ? "default" : "outline"} 
+                size="sm" 
+                className={cn("h-6 w-10 shrink-0 px-0 transition-all", lighthouseMode && "bg-primary text-primary-foreground font-bold")}
+                onClick={() => setLighthouseMode(!lighthouseMode)}
+              >
+                <span className="text-[9px] uppercase">{lighthouseMode ? "ON" : "OFF"}</span>
+              </Button>
+            </div>
+
+            {/* Eye Pulse */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-medium text-foreground">Pulso Ocular 20-20-20</p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">Un indicador visual sutil cada 20 minutos para prevenir fatiga.</p>
+              </div>
+              <Button 
+                variant={eyePulse ? "default" : "outline"} 
+                size="sm" 
+                className={cn("h-6 w-10 shrink-0 px-0 transition-all", eyePulse && "bg-primary text-primary-foreground font-bold")}
+                onClick={() => setEyePulse(!eyePulse)}
+              >
+                <span className="text-[9px] uppercase">{eyePulse ? "ON" : "OFF"}</span>
+              </Button>
+            </div>
+
+            {/* Ambient Sound */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-medium text-foreground">Ambiente Sonoro Envolvente</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'none', label: 'Sin Sonido' },
+                  { id: 'rain', label: 'Lluvia' },
+                  { id: 'white', label: 'Ruido Blanco' },
+                  { id: 'cafe', label: 'Cafetería' }
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setAmbientSound(s.id as any)}
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-[9px] font-medium transition-all border",
+                      ambientSound === s.id 
+                        ? "bg-primary text-primary-foreground border-primary" 
+                        : "bg-muted/50 text-muted-foreground border-border hover:bg-muted"
+                    )}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </section>
