@@ -37,6 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { FileNode } from "@/types/expediente";
 import type { AnnotationColor, NormalizedPoint, NormalizedRect } from "@/types/anotaciones";
+import { CITA_DRAG_TYPE, type CitaDragPayload } from "@/types/citas";
 import { useIsElectron } from "@/hooks/useIsElectron";
 import { useEditorStore } from "@/state/editor.store";
 import { useExplorerStore } from "@/state/explorer.store";
@@ -46,7 +47,7 @@ import { useCitasStore } from "@/state/citas.store";
 import { useDocStatusStore } from "@/state/docStatus.store";
 import { useWorkbenchStore } from "@/state/workbench.store";
 import { useUXStore } from "@/state/ux.store";
-import { AnnotationOverlay, toCanonicalRect } from "@/features/annotations/AnnotationOverlay";
+import { AnnotationOverlay, toCanonicalRect, toRotatedRect } from "@/features/annotations/AnnotationOverlay";
 import { DocStatusButton } from "@/features/pdf-viewer/DocStatusButton";
 import { PdfMinimap } from "@/features/pdf-viewer/PdfMinimap";
 import { ExpedienteDashboard } from "@/features/expediente/ExpedienteDashboard";
@@ -66,10 +67,18 @@ const COLOR_DOT: Record<AnnotationColor, string> = {
   blue:   "bg-blue-500",
 };
 
+const CITA_FILL: Record<AnnotationColor, string> = {
+  yellow: "rgba(245,158,11,0.30)",
+  green:  "rgba(34,197,94,0.30)",
+  red:    "rgba(239,68,68,0.30)",
+  blue:   "rgba(59,130,246,0.30)",
+};
+
 function computeRelativeFilePath(filePath: string, expedientePath: string): string {
   const fwd    = filePath.replace(/\\/g, "/");
   const expFwd = expedientePath.replace(/\\/g, "/").replace(/\/$/, "");
-  if (fwd.startsWith(expFwd + "/")) return fwd.slice(expFwd.length);
+  // Case-insensitive startsWith (Windows paths can differ in case)
+  if (fwd.toLowerCase().startsWith(expFwd.toLowerCase() + "/")) return fwd.slice(expFwd.length);
   return "/" + (fwd.split("/").pop() ?? "");
 }
 
@@ -179,23 +188,51 @@ const COLOR_DOT_BUBBLE: Record<AnnotationColor, string> = {
 };
 
 interface SelectionBubbleProps {
-  state:           SelectionBubbleState;
+  state:            SelectionBubbleState;
   relativeFilePath: string | null;
-  activeColor:     AnnotationColor;
-  onHighlight:     (color: AnnotationColor) => void;
-  onAddToCitas:    () => void;
+  activeColor:      AnnotationColor;
+  onHighlight:      (color: AnnotationColor) => void;
+  onAddToCitas:     () => void;
+  onDismiss:        () => void;
 }
 
 function SelectionBubble({
   state,
+  relativeFilePath,
+  activeColor,
   onHighlight,
   onAddToCitas,
+  onDismiss,
 }: SelectionBubbleProps) {
-  const BUBBLE_W = 116; // approx width: 4×color + gap + quote icon
+  const BUBBLE_W = 148; // 4×color + sep + quote + sep + drag handle
   const BUBBLE_H = 32;
   const OFFSET   = 6;
   const left = Math.min(Math.max(state.viewportX + OFFSET, 8), window.innerWidth  - BUBBLE_W - 8);
   const top  = Math.min(Math.max(state.viewportY + OFFSET, 8), window.innerHeight - BUBBLE_H - 8);
+
+  const handleDragStart = (e: React.DragEvent) => {
+    // Clear text selection FIRST — prevents the browser from trying to drag
+    // the PDF's selected text instead of our custom payload.
+    window.getSelection()?.removeAllRanges();
+
+    const payload: CitaDragPayload = {
+      text:             state.selectedText,
+      relativeFilePath: relativeFilePath,
+      pageNumber:       state.pageNum,
+      color:            activeColor,
+      normalizedRects:  state.normalizedRects,
+    };
+    e.dataTransfer.setData(CITA_DRAG_TYPE, JSON.stringify(payload));
+    e.dataTransfer.effectAllowed = "copy";
+    // NOTE: do NOT unmount here — removing the drag source from the DOM
+    // while the drag is active cancels the operation in Chromium/Electron.
+    // Dismissal happens in onDragEnd instead.
+  };
+
+  const handleDragEnd = () => {
+    // Fires whether the drop succeeded or the user cancelled (Escape / released outside).
+    onDismiss();
+  };
 
   return (
     <div
@@ -222,6 +259,17 @@ function SelectionBubble({
       >
         <IconQuote size={13} />
       </button>
+      <div className="mx-0.5 h-4 w-px bg-border" />
+      {/* Drag handle — drag onto a note / Citas panel / other PDF pane */}
+      <div
+        draggable
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        className="cursor-grab rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-primary active:cursor-grabbing"
+        title="Arrastra hacia una nota o al panel de Citas para crear una cita vinculada"
+      >
+        <IconLink size={13} />
+      </div>
     </div>
   );
 }
@@ -312,6 +360,33 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
 
   const [selectionBubble, setSelectionBubble] = useState<SelectionBubbleState | null>(null);
 
+  /**
+   * Per-page drop overlay refs — manipulated SYNCHRONOUSLY via native window
+   * dragstart/dragend so pointer-events flip before the first dragover fires.
+   * (React setState is async and would lose the race against Chromium's drop check.)
+   */
+  const dropOverlayRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
+
+  useEffect(() => {
+    const setOverlays = (pe: "all" | "none") => {
+      dropOverlayRefs.current.forEach((div) => {
+        if (div) div.style.pointerEvents = pe;
+      });
+    };
+    const onStart = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes(CITA_DRAG_TYPE)) setOverlays("all");
+    };
+    const onEnd = () => setOverlays("none");
+    window.addEventListener("dragstart", onStart);
+    window.addEventListener("dragend",   onEnd);
+    window.addEventListener("drop",      onEnd);
+    return () => {
+      window.removeEventListener("dragstart", onStart);
+      window.removeEventListener("dragend",   onEnd);
+      window.removeEventListener("drop",      onEnd);
+    };
+  }, []);
+
   // Blob URL for the current PDF
   const [pdfSrc, setPdfSrc]       = useState<string | null>(null);
   const [loading, setLoading]     = useState(false);
@@ -370,20 +445,21 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
   const [flashingPageNum, setFlashingPageNum]           = useState<number | null>(null);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Citas store (for adding quotes from text selection)
-  const { addCita } = useCitasStore();
+  // Citas store (for adding quotes from text selection + backward badges)
+  const { addCita, citas } = useCitasStore();
   // Doc status store — loaded flag for toolbar button
   const { isLoaded: docStatusLoaded } = useDocStatusStore();
   const { setRightPanelTab, setFocusedPane, splitFile } = useWorkbenchStore();
 
-  // Revision meta for building relative file paths
-  const meta = useRevisionStore((s) => s.meta);
+  // Revision meta for building relative file paths.
+  // Use expedientePath directly — it's set even when meta is null (outside clientesFolder).
+  const expedientePath = useRevisionStore((s) => s.expedientePath);
 
   const relativeFilePath = useMemo(() => {
     if (!file) return null;
-    if (meta) return computeRelativeFilePath(file.path, meta.expedientePath);
+    if (expedientePath) return computeRelativeFilePath(file.path, expedientePath);
     return `/${file.name}`;
-  }, [file, meta]);
+  }, [file, expedientePath]);
 
   // ── Debounce renderScale behind scale to avoid per-keystroke canvas redraws ──
   useEffect(() => {
@@ -945,6 +1021,7 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
       color:            activeColor,
       note:             "",
       createdAt:        new Date().toISOString(),
+      rects:            selectionBubble.normalizedRects,
     });
     setRightPanelTab("citas");
     window.getSelection()?.removeAllRanges();
@@ -1086,6 +1163,7 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
           activeColor={activeColor}
           onHighlight={handleHighlightFromBubble}
           onAddToCitas={handleAddToCitas}
+          onDismiss={() => { setSelectionBubble(null); window.getSelection()?.removeAllRanges(); }}
         />
       )}
 
@@ -1247,6 +1325,15 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
                     // CSS scale factor: stretches renderScale content to fill displayScale area
                     const cssScaleFactor = renderScale > 0 ? scale / renderScale : 1;
 
+                      // Badge: pages that are the SOURCE or TARGET of any cita
+                      const pageCitas = relativeFilePath
+                        ? citas.filter((c) =>
+                            (c.relativeFilePath === relativeFilePath && c.pageNumber === pageNum) ||
+                            (c.targetRelativeFilePath === relativeFilePath && c.targetPageNumber === pageNum)
+                          )
+                        : [];
+                      const pageCitaCount = pageCitas.length;
+
                       return (
                         <div
                           key={pageNum}
@@ -1256,6 +1343,98 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
                           style={{ width: pageW, height: pageH }}
                           onMouseUp={(e) => handlePageMouseUp(e, pageNum)}
                         >
+                        {/*
+                          Drop overlay — sits above the PDF.js canvas/text-layer so that
+                          drag events reach a React element before Chromium checks preventDefault.
+                          Starts pointer-events: none (PDF interaction unaffected).
+                          Flipped to "all" synchronously via dropOverlayRefs when a cita drag starts,
+                          so the first dragover already finds a valid drop target.
+                        */}
+                        <div
+                          ref={(el) => {
+                            if (el) dropOverlayRefs.current.set(pageNum, el);
+                            else dropOverlayRefs.current.delete(pageNum);
+                          }}
+                          className="absolute inset-0 z-20"
+                          style={{ pointerEvents: "none" }}
+                          onWheel={(e) => {
+                            // Forward scroll events to the scroll container so the
+                            // user can scroll to find the target page while dragging.
+                            mainScrollRef.current?.scrollBy({ top: e.deltaY });
+                          }}
+                          onDragOver={(e) => {
+                            if (e.dataTransfer.types.includes(CITA_DRAG_TYPE)) {
+                              e.preventDefault();
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const raw = e.dataTransfer.getData(CITA_DRAG_TYPE);
+                            if (!raw) return;
+                            const payload = JSON.parse(raw) as CitaDragPayload;
+                            if (
+                              payload.relativeFilePath === relativeFilePath &&
+                              payload.pageNumber === pageNum
+                            ) return;
+
+                            const citaId = crypto.randomUUID();
+                            addCita({
+                              id:                     citaId,
+                              text:                   payload.text,
+                              relativeFilePath:       payload.relativeFilePath,
+                              pageNumber:             payload.pageNumber,
+                              color:                  payload.color,
+                              note:                   "",
+                              createdAt:              new Date().toISOString(),
+                              rects:                  payload.normalizedRects.length > 0 ? payload.normalizedRects : undefined,
+                              targetRelativeFilePath: relativeFilePath ?? undefined,
+                              targetPageNumber:       pageNum,
+                            });
+
+                            setRightPanelTab("citas");
+                          }}
+                        />
+                        {/* Citation link badge — shown on source AND target pages */}
+                        {pageCitaCount > 0 && (
+                          <button
+                            className="absolute top-1 right-1 z-30 flex items-center gap-0.5 rounded-full bg-amber-500/80 px-1.5 py-0.5 text-white hover:bg-amber-500 transition-colors shadow-sm"
+                            title={`${pageCitaCount} cita${pageCitaCount > 1 ? "s" : ""} vinculada${pageCitaCount > 1 ? "s" : ""} a esta página`}
+                            onClick={(e) => { e.stopPropagation(); setRightPanelTab("citas"); }}
+                          >
+                            <IconQuote size={8} />
+                            {pageCitaCount > 1 && (
+                              <span className="text-[8px] font-semibold leading-none">{pageCitaCount}</span>
+                            )}
+                          </button>
+                        )}
+                        {/* Cita highlight rects — colored overlay on cited text */}
+                        {pageCitas.some((c) => c.rects?.length) && (
+                          <svg
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              width: pageW,
+                              height: pageH,
+                              pointerEvents: "none",
+                              zIndex: 8,
+                            }}
+                          >
+                            {pageCitas.flatMap((cita) =>
+                              (cita.rects ?? []).map((rect, i) => {
+                                // toRotatedRect needs unrotated intrinsic dims (same as AnnotationOverlay's canonW/H)
+                                const r = toRotatedRect(rect, intrinsic.w * scale, intrinsic.h * scale, pageRotation);
+                                return (
+                                  <rect
+                                    key={`${cita.id}-${i}`}
+                                    x={r.x} y={r.y} width={r.w} height={r.h}
+                                    fill={CITA_FILL[cita.color]}
+                                  />
+                                );
+                              })
+                            )}
+                          </svg>
+                        )}
+
                         {/*
                           Inner wrapper: rendered at renderScale, CSS-scaled to displayScale.
                           This means the PDF canvas is never blank during rapid zoom —

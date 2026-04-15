@@ -37,7 +37,8 @@ function computeRelPath(absPath: string, expedientePath: string): string {
   const norm = (p: string) => p.replace(/\\/g, "/");
   const base = norm(expedientePath).replace(/\/$/, "");
   const full = norm(absPath);
-  return full.startsWith(base) ? full.slice(base.length) : `/${full.split("/").pop()}`;
+  // Case-insensitive comparison for Windows paths
+  return full.toLowerCase().startsWith(base.toLowerCase()) ? full.slice(base.length) : `/${full.split("/").pop()}`;
 }
 
 // ─── Toolbar ─────────────────────────────────────────────────────────────────
@@ -58,7 +59,8 @@ export function PdfToolbar() {
   } = useAnotacionesStore();
 
   const { isLoaded: docStatusLoaded } = useDocStatusStore();
-  const meta = useRevisionStore((s) => s.meta);
+  const meta              = useRevisionStore((s) => s.meta);
+  const expedientePath    = useRevisionStore((s) => s.expedientePath);
   const { zenMode, setZenMode, readingMode } = useUXStore();
 
   const state   = paneState[focusedPane];
@@ -100,8 +102,8 @@ export function PdfToolbar() {
   const isErasing    = annotationMode === "erase";
   const inSplitMode  = splitFile !== null;
 
-  const relativeFilePath = state.file && meta
-    ? computeRelPath(state.file.path, meta.expedientePath)
+  const relativeFilePath = state.file && (expedientePath ?? meta?.expedientePath)
+    ? computeRelPath(state.file.path, (expedientePath ?? meta!.expedientePath)!)
     : null;
 
   if (!state.file || state.file.type !== "pdf") return null;

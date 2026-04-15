@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useEffect } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 import {
   IconNotes,
   IconFolderOpen,
@@ -11,15 +11,19 @@ import {
   IconChevronRight,
   IconCloudOff,
   IconFilePlus,
+  IconLink,
 } from "@tabler/icons-react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { useAnotacionesStore } from "@/state/anotaciones.store";
+import { useCitasStore } from "@/state/citas.store";
 import { useRevisionStore } from "@/state/revision.store";
 import { useEditorStore } from "@/state/editor.store";
 import { useExplorerStore } from "@/state/explorer.store";
 import { useWorkbenchStore } from "@/state/workbench.store";
 import type { Annotation, AnnotationColor } from "@/types/anotaciones";
+import type { Cita } from "@/types/citas";
+import { CITA_DRAG_TYPE, type CitaDragPayload } from "@/types/citas";
 import type { FileNode } from "@/types/expediente";
 import { cn } from "@/lib/utils";
 
@@ -65,7 +69,8 @@ function absoluteFrom(expedientePath: string, relativeFilePath: string): string 
 function relativeFrom(filePath: string, expedientePath: string): string {
   const fwd    = filePath.replace(/\\/g, "/");
   const expFwd = expedientePath.replace(/\\/g, "/").replace(/\/$/, "");
-  if (fwd.startsWith(expFwd + "/")) return fwd.slice(expFwd.length);
+  // Case-insensitive for Windows paths
+  if (fwd.toLowerCase().startsWith(expFwd.toLowerCase() + "/")) return fwd.slice(expFwd.length);
   return "/" + (fwd.split("/").pop() ?? fwd);
 }
 
@@ -84,16 +89,68 @@ function NoteRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const { updateAnnotationText, updateAnnotationColor } = useAnotacionesStore();
+  const { updateAnnotationText, updateAnnotationColor, navigateTo } = useAnotacionesStore();
+  const { addCita, deleteCita, citas } = useCitasStore();
+  const { meta } = useRevisionStore();
+  const { openFile } = useEditorStore();
+  const { root }     = useExplorerStore();
+  const { focusedPane, splitFile, setSplitFile } = useWorkbenchStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  // Citas embedded in this note
+  const embeddedCitas = useMemo(
+    () => citas.filter((c) => c.annotationId === annotation.id),
+    [citas, annotation.id],
+  );
 
   useEffect(() => {
     if (isEditing) {
-      // Small delay so the textarea is visible before focusing
       const t = setTimeout(() => textareaRef.current?.focus(), 50);
       return () => clearTimeout(t);
     }
   }, [isEditing]);
+
+  const handleCitaNavigate = (cita: Cita) => {
+    if (!cita.relativeFilePath) return;
+    const expPath = meta?.expedientePath;
+    if (!expPath) return;
+    const absFwd   = expPath.replace(/\/$/, "") + "/" + cita.relativeFilePath.replace(/^\//, "");
+    const normFwd  = absFwd.replace(/\\/g, "/");
+    const node     = findFileNode(root, normFwd);
+    const fileNode = node ?? {
+      id: absFwd, name: cita.relativeFilePath.split("/").filter(Boolean).pop() ?? "",
+      type: "pdf" as const, path: absFwd, loaded: true,
+    };
+    if (focusedPane === "right" && splitFile !== null) setSplitFile(fileNode);
+    else openFile(fileNode);
+    if (cita.pageNumber !== null) navigateTo(absFwd, cita.pageNumber, cita.id, focusedPane);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const raw = e.dataTransfer.getData(CITA_DRAG_TYPE);
+    if (!raw) return;
+    const payload = JSON.parse(raw) as CitaDragPayload;
+
+    if (payload.existingCitaId) {
+      // Existing cita dragged from CitasPanel — just update its annotationId
+      useCitasStore.getState().updateCitaAnnotation(payload.existingCitaId, annotation.id);
+    } else {
+      // New cita from the selection bubble — create it anchored to this note
+      addCita({
+        id:               crypto.randomUUID(),
+        text:             payload.text,
+        relativeFilePath: payload.relativeFilePath,
+        pageNumber:       payload.pageNumber,
+        color:            payload.color,
+        note:             "",
+        createdAt:        new Date().toISOString(),
+        annotationId:     annotation.id,
+      });
+    }
+  };
 
   return (
     <div
@@ -101,7 +158,16 @@ function NoteRow({
         "group rounded-md border bg-card transition-colors",
         COLOR_BORDER[annotation.color],
         isEditing && "ring-1 ring-primary/30",
+        isDragOver && "ring-2 ring-primary/40 bg-primary/5",
       )}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes(CITA_DRAG_TYPE)) {
+          e.preventDefault();
+          setIsDragOver(true);
+        }
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={handleDrop}
     >
       {/* Row header */}
       <div
@@ -191,6 +257,53 @@ function NoteRow({
           </div>
         </div>
       )}
+
+      {/* Embedded citas — dropped from PDF selection bubble */}
+      {embeddedCitas.length > 0 && (
+        <div className="border-t px-2 py-1.5 space-y-1.5">
+          <p className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+            <IconLink size={8} />
+            Citas vinculadas
+          </p>
+          {embeddedCitas.map((cita) => {
+            const fileName = cita.relativeFilePath?.split("/").filter(Boolean).pop() ?? null;
+            return (
+              <div key={cita.id} className="group/ec flex items-start gap-1.5">
+                <span className={cn("mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full", COLOR_CLASS[cita.color])} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] leading-relaxed text-muted-foreground italic line-clamp-2">
+                    &ldquo;{cita.text}&rdquo;
+                  </p>
+                  {fileName && (
+                    <button
+                      onClick={() => handleCitaNavigate(cita)}
+                      className="flex items-center gap-0.5 text-[9px] text-muted-foreground/50 hover:text-primary hover:underline"
+                      title="Ir a este fragmento"
+                    >
+                      <IconFileText size={8} />
+                      {fileName}{cita.pageNumber !== null ? ` · pág ${cita.pageNumber}` : ""}
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => deleteCita(cita.id)}
+                  className="shrink-0 rounded p-0.5 opacity-0 group-hover/ec:opacity-100 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive transition-opacity"
+                  title="Quitar cita"
+                >
+                  <IconTrash size={9} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Drop hint when nothing is embedded yet */}
+      {embeddedCitas.length === 0 && isDragOver && (
+        <div className="border-t px-2 py-2 text-center">
+          <p className="text-[9px] text-primary/70">Suelta aquí para vincular la cita</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -208,7 +321,7 @@ export function NotesPanel() {
     addAnnotation,
   } = useAnotacionesStore();
 
-  const { isLoaded: revLoaded, meta, isOutsideClientes } = useRevisionStore();
+  const { isLoaded: revLoaded, meta, isOutsideClientes, expedientePath } = useRevisionStore();
   const { openFile } = useEditorStore();
   const { root } = useExplorerStore();
   const { focusedPane, splitFile, setSplitFile, paneState } = useWorkbenchStore();
@@ -220,9 +333,10 @@ export function NotesPanel() {
   // Relative path of the focused pane's file (if any)
   const activeRelativePath = useMemo(() => {
     if (!focusedFile) return null;
-    if (meta) return relativeFrom(focusedFile.path, meta.expedientePath);
+    const expPath = expedientePath ?? meta?.expedientePath;
+    if (expPath) return relativeFrom(focusedFile.path, expPath);
     return `/${focusedFile.name}`;
-  }, [focusedFile, meta]);
+  }, [focusedFile, expedientePath, meta]);
 
   // ── Add manual note for the currently open file ───────────────────────────
 

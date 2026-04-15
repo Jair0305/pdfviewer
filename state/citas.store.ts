@@ -36,10 +36,11 @@ interface CitasState {
   loadCitas:   (revisionPath: string) => Promise<void>;
   unloadCitas: () => void;
 
-  addCita:         (c: Cita) => void;
-  deleteCita:      (id: string) => void;
-  updateCitaNote:  (id: string, note: string) => void;
-  updateCitaColor: (id: string, color: AnnotationColor) => void;
+  addCita:              (c: Cita) => void;
+  deleteCita:           (id: string) => void;
+  updateCitaNote:       (id: string, note: string) => void;
+  updateCitaColor:      (id: string, color: AnnotationColor) => void;
+  updateCitaAnnotation: (id: string, annotationId: string | undefined) => void;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -96,6 +97,15 @@ export const useCitasStore = create<CitasState>((set, get) => ({
   updateCitaColor: (id, color) => {
     set((s) => ({
       citas: s.citas.map((c) => (c.id === id ? { ...c, color } : c)),
+    }));
+    scheduleSave(get);
+  },
+
+  updateCitaAnnotation: (id, annotationId) => {
+    set((s) => ({
+      citas: s.citas.map((c) =>
+        c.id === id ? { ...c, annotationId } : c,
+      ),
     }));
     scheduleSave(get);
   },
