@@ -62,8 +62,8 @@ export const useSearchStore = create<SearchState>((set, get) => ({
 
     try {
       if (api && indexed) {
-        // SQLite index search
-        const results = await api.searchIndex(q);
+        // SQLite index search — scoped to the current expediente root
+        const results = await api.searchIndex(q, memoryRoot?.path);
         set({ results, isSearching: false });
       } else {
         // Fallback: in-memory scan

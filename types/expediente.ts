@@ -43,6 +43,14 @@ export interface SearchResult {
   relativePath?: string;
 }
 
+export interface ContentSearchResult {
+  path: string;
+  name: string;
+  page: number;
+  /** Text snippet with [[...]] markers around the matched terms */
+  snippet: string;
+}
+
 // ─── Indexer ─────────────────────────────────────────────────────────────────
 
 export interface IndexProgress {

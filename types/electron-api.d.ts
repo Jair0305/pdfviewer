@@ -40,6 +40,19 @@ export interface SearchResult {
   extension: string;
 }
 
+export interface PdfPageText {
+  page: number;
+  text: string;
+}
+
+export interface ContentSearchResult {
+  path: string;
+  name: string;
+  page: number;
+  /** Text with [[...]] markers around matched terms */
+  snippet: string;
+}
+
 export interface ElectronAPI {
   // File system — read
   openDirectory(): Promise<string | null>;
@@ -65,10 +78,19 @@ export interface ElectronAPI {
 
   // Indexer
   startIndex(rootPath: string): Promise<void>;
-  searchIndex(query: string): Promise<SearchResult[]>;
+  searchIndex(query: string, rootPath?: string): Promise<SearchResult[]>;
   clearIndex(rootPath: string): Promise<void>;
   onIndexProgress(callback: (payload: IndexProgressPayload) => void): () => void;
   onIndexComplete(callback: (payload: IndexCompletePayload) => void): () => void;
+
+  // Content (full-text PDF) search
+  storePdfContent(filePath: string, name: string, rootPath: string, pages: PdfPageText[]): Promise<void>;
+  searchContent(query: string, rootPath?: string): Promise<ContentSearchResult[]>;
+  hasContentIndex(rootPath: string): Promise<boolean>;
+  clearContentIndex(rootPath: string): Promise<void>;
+
+  // PDF text extraction (runs in main process — no worker issues)
+  extractPdfText(filePath: string): Promise<PdfPageText[]>;
 
   // Shell utilities
   showInFolder(filePath: string): Promise<void>;

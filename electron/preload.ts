@@ -6,6 +6,8 @@ import type {
   IndexProgressPayload,
   IndexCompletePayload,
   SearchResult,
+  PdfPageText,
+  ContentSearchResult,
 } from "./types.js";
 
 /** Helper: subscribe to an IPC event, return unsubscribe fn */
@@ -57,8 +59,8 @@ contextBridge.exposeInMainWorld("api", {
   startIndex: (rootPath: string): Promise<void> =>
     ipcRenderer.invoke(IPC.INDEX_START, rootPath),
 
-  searchIndex: (query: string): Promise<SearchResult[]> =>
-    ipcRenderer.invoke(IPC.INDEX_SEARCH, query),
+  searchIndex: (query: string, rootPath?: string): Promise<SearchResult[]> =>
+    ipcRenderer.invoke(IPC.INDEX_SEARCH, query, rootPath),
 
   clearIndex: (rootPath: string): Promise<void> =>
     ipcRenderer.invoke(IPC.INDEX_CLEAR, rootPath),
@@ -68,6 +70,23 @@ contextBridge.exposeInMainWorld("api", {
 
   onIndexComplete: (cb: (p: IndexCompletePayload) => void) =>
     on<IndexCompletePayload>(IPC.INDEX_COMPLETE, cb),
+
+  // ── Content (full-text PDF) search ────────────────────────────────────────
+  storePdfContent: (filePath: string, name: string, rootPath: string, pages: PdfPageText[]): Promise<void> =>
+    ipcRenderer.invoke(IPC.CONTENT_STORE, filePath, name, rootPath, pages),
+
+  searchContent: (query: string, rootPath?: string): Promise<ContentSearchResult[]> =>
+    ipcRenderer.invoke(IPC.CONTENT_SEARCH, query, rootPath),
+
+  hasContentIndex: (rootPath: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC.CONTENT_HAS_INDEX, rootPath),
+
+  clearContentIndex: (rootPath: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.CONTENT_CLEAR, rootPath),
+
+  // ── PDF text extraction ────────────────────────────────────────────────────
+  extractPdfText: (filePath: string): Promise<{ page: number; text: string }[]> =>
+    ipcRenderer.invoke(IPC.PDF_EXTRACT_TEXT, filePath),
 
   // ── Shell utilities ────────────────────────────────────────────────────────
   showInFolder: (filePath: string): Promise<void> =>

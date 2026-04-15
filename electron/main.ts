@@ -13,7 +13,8 @@ import { FileIndexer } from "./services/indexer.js";
 import { IPC } from "./ipc-channels.js";
 import * as fsService from "./services/filesystem.js";
 import * as revisionService from "./services/revision.js";
-import type { FsNodeEvent } from "./types.js";
+import { extractPdfPages } from "./services/pdfextractor.js";
+import type { FsNodeEvent, PdfPageText } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
@@ -195,9 +196,9 @@ function registerHandlers() {
     });
   });
 
-  ipcMain.handle(IPC.INDEX_SEARCH, async (_e, query: string) => {
+  ipcMain.handle(IPC.INDEX_SEARCH, async (_e, query: string, rootPath?: string) => {
     try {
-      return getIndexer().search(query);
+      return getIndexer().search(query, rootPath);
     } catch {
       return [];
     }
@@ -205,6 +206,52 @@ function registerHandlers() {
 
   ipcMain.handle(IPC.INDEX_CLEAR, async (_e, rootPath: string) => {
     getIndexer().clearRoot(rootPath);
+  });
+
+  // ── Content (full-text PDF) search ─────────────────────────────────────────
+  ipcMain.handle(
+    IPC.CONTENT_STORE,
+    (_e, filePath: string, name: string, rootPath: string, pages: PdfPageText[]) => {
+      try {
+        getIndexer().storePdfContent(filePath, name, rootPath, pages);
+      } catch (err) {
+        console.error("[CONTENT ERROR] store:", err);
+      }
+    },
+  );
+
+  ipcMain.handle(IPC.CONTENT_SEARCH, (_e, query: string, rootPath?: string) => {
+    try {
+      return getIndexer().searchContent(query, rootPath);
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle(IPC.CONTENT_HAS_INDEX, (_e, rootPath: string) => {
+    try {
+      return getIndexer().hasContentIndex(rootPath);
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.handle(IPC.CONTENT_CLEAR, (_e, rootPath: string) => {
+    try {
+      getIndexer().clearContent(rootPath);
+    } catch (err) {
+      console.error("[CONTENT ERROR] clear:", err);
+    }
+  });
+
+  // ── PDF text extraction ──────────────────────────────────────────────────────
+  ipcMain.handle(IPC.PDF_EXTRACT_TEXT, async (_e, filePath: string) => {
+    try {
+      return await extractPdfPages(filePath);
+    } catch (err) {
+      console.error("[PDF EXTRACT] Error:", filePath, err);
+      throw err;
+    }
   });
 
   // ── Shell utilities ─────────────────────────────────────────────────────────

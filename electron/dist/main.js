@@ -6,8 +6,8 @@ import {
   dialog,
   shell
 } from "electron";
-import path4 from "path";
-import fs3 from "fs";
+import path5 from "path";
+import fs4 from "fs";
 import { fileURLToPath } from "url";
 import chokidar from "chokidar";
 
@@ -16,6 +16,27 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { app } from "electron";
+function normText(text) {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+function buildSnippet(original, normalized, termNorm) {
+  const pos = normalized.indexOf(termNorm);
+  if (pos === -1) return original.slice(0, 200) + (original.length > 200 ? "\u2026" : "");
+  const BEFORE = 80;
+  const AFTER = 140;
+  const start = Math.max(0, pos - BEFORE);
+  const end = Math.min(original.length, pos + termNorm.length + AFTER);
+  const prefix = start > 0 ? "\u2026" : "";
+  const suffix = end < original.length ? "\u2026" : "";
+  const chunk = original.slice(start, end);
+  const chunkNorm = normalized.slice(start, end);
+  const matchInChunk = chunkNorm.indexOf(termNorm);
+  if (matchInChunk === -1) return prefix + chunk + suffix;
+  const before = chunk.slice(0, matchInChunk);
+  const match = chunk.slice(matchInChunk, matchInChunk + termNorm.length);
+  const after = chunk.slice(matchInChunk + termNorm.length);
+  return prefix + before + "[[" + match + "]]" + after + suffix;
+}
 var FileIndexer = class {
   constructor() {
     const dbPath = path.join(app.getPath("userData"), "expediente-index.db");
@@ -39,6 +60,23 @@ var FileIndexer = class {
       CREATE INDEX IF NOT EXISTS idx_name ON indexed_files (name COLLATE NOCASE);
       CREATE INDEX IF NOT EXISTS idx_root ON indexed_files (root_path);
       CREATE INDEX IF NOT EXISTS idx_ext  ON indexed_files (extension);
+    `);
+    try {
+      this.db.prepare(`SELECT content_norm FROM pdf_content LIMIT 1`).get();
+    } catch {
+      this.db.exec(`DROP TABLE IF EXISTS pdf_content`);
+    }
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS pdf_content (
+        path         TEXT NOT NULL,
+        name         TEXT NOT NULL,
+        root_path    TEXT NOT NULL,
+        page         INTEGER NOT NULL,
+        content      TEXT NOT NULL,
+        content_norm TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pdfcontent_root ON pdf_content (root_path);
+      CREATE INDEX IF NOT EXISTS idx_pdfcontent_path ON pdf_content (path);
     `);
     this.insertStmt = this.db.prepare(`
       INSERT OR REPLACE INTO indexed_files
@@ -121,6 +159,62 @@ var FileIndexer = class {
          ORDER BY name ASC LIMIT ?`
     ).all(pattern, limit);
   }
+  // ─── Content (full-text PDF) methods ─────────────────────────────────────
+  /** Store extracted text pages for one PDF. Replaces any existing data for that path. */
+  storePdfContent(filePath, name, rootPath, pages) {
+    this.db.prepare(`DELETE FROM pdf_content WHERE path = ?`).run(filePath);
+    const ins = this.db.prepare(
+      `INSERT INTO pdf_content (path, name, root_path, page, content, content_norm)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    );
+    const batch = this.db.transaction((rows) => {
+      for (const row of rows) {
+        const trimmed = row.text.trim();
+        if (trimmed.length === 0) continue;
+        ins.run(filePath, name, rootPath, row.page, trimmed, normText(trimmed));
+      }
+    });
+    batch(pages);
+  }
+  /**
+   * Search PDF content using LIKE on the normalized text column.
+   * All query terms must appear (AND logic). Returns results with highlighted snippets.
+   */
+  searchContent(query, rootPath, limit = 50) {
+    if (!query.trim()) return [];
+    const terms = query.trim().split(/\s+/).filter(Boolean).map((t) => normText(t));
+    if (terms.length === 0) return [];
+    const patterns = terms.map((t) => `%${t.replace(/[%_\\]/g, "\\$&")}%`);
+    const likeClauses = terms.map(() => `content_norm LIKE ? ESCAPE '\\'`).join(" AND ");
+    const rootClause = rootPath ? ` AND root_path = ?` : "";
+    const params = [...patterns, ...rootPath ? [rootPath] : [], limit];
+    try {
+      const rows = this.db.prepare(
+        `SELECT path, name, page, content, content_norm
+           FROM pdf_content
+           WHERE ${likeClauses}${rootClause}
+           ORDER BY path, page
+           LIMIT ?`
+      ).all(...params);
+      return rows.map((row) => ({
+        path: row.path,
+        name: row.name,
+        page: row.page,
+        snippet: buildSnippet(row.content, row.content_norm, terms[0])
+      }));
+    } catch {
+      return [];
+    }
+  }
+  /** True if this root has any content indexed. */
+  hasContentIndex(rootPath) {
+    const row = this.db.prepare(`SELECT COUNT(*) AS n FROM pdf_content WHERE root_path = ?`).get(rootPath);
+    return row.n > 0;
+  }
+  /** Delete all content for a root (call before re-indexing). */
+  clearContent(rootPath) {
+    this.db.prepare(`DELETE FROM pdf_content WHERE root_path = ?`).run(rootPath);
+  }
   /** Remove all indexed files under rootPath. */
   clearRoot(rootPath) {
     this.db.prepare(`DELETE FROM indexed_files WHERE root_path = ?`).run(rootPath);
@@ -161,6 +255,13 @@ var IPC = {
   INDEX_COMPLETE: "index:complete",
   INDEX_SEARCH: "index:search",
   INDEX_CLEAR: "index:clear",
+  // Content (full-text PDF) search
+  CONTENT_STORE: "content:store",
+  CONTENT_SEARCH: "content:search",
+  CONTENT_HAS_INDEX: "content:has-index",
+  CONTENT_CLEAR: "content:clear",
+  // PDF text extraction (main process, bypasses renderer worker issues)
+  PDF_EXTRACT_TEXT: "pdf:extract-text",
   // Shell utilities
   SHELL_SHOW_FILE: "shell:show-item",
   // Revision — generic step I/O (no new channels needed when adding future steps)
@@ -370,8 +471,45 @@ async function saveStepData(revisionPath, stepId, data) {
   );
 }
 
+// electron/services/pdfextractor.ts
+import { createRequire } from "module";
+import path4 from "path";
+import fs3 from "fs";
+var req = createRequire(import.meta.url);
+var _getDocument = null;
+async function ensureInit() {
+  if (_getDocument) return _getDocument;
+  const pkgJson = req.resolve("pdfjs-dist/package.json");
+  const pkgDir = path4.dirname(pkgJson);
+  const pdfPath = path4.join(pkgDir, "legacy", "build", "pdf.mjs");
+  const wrkPath = path4.join(pkgDir, "legacy", "build", "pdf.worker.mjs");
+  const pdfUrl = "file:///" + pdfPath.replace(/\\/g, "/");
+  const wrkUrl = "file:///" + wrkPath.replace(/\\/g, "/");
+  const lib = await import(pdfUrl);
+  lib.GlobalWorkerOptions.workerSrc = wrkUrl;
+  _getDocument = lib.getDocument;
+  console.log("[PDF EXTRACTOR] pdfjs initialized, worker:", wrkUrl);
+  return _getDocument;
+}
+async function extractPdfPages(filePath) {
+  const getDocument = await ensureInit();
+  const buffer = fs3.readFileSync(filePath);
+  const data = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  const doc = await getDocument({ data }).promise;
+  const pages = [];
+  for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+    const page = await doc.getPage(pageNum);
+    const tc = await page.getTextContent();
+    const text = tc.items.map((item) => item.str ?? "").join(" ").replace(/\s+/g, " ").trim();
+    if (text.length > 5) pages.push({ page: pageNum, text });
+    page.cleanup();
+  }
+  await doc.destroy();
+  return pages;
+}
+
 // electron/main.ts
-var __dirname = path4.dirname(fileURLToPath(import.meta.url));
+var __dirname = path5.dirname(fileURLToPath(import.meta.url));
 var isDev = !app2.isPackaged;
 function norm2(p) {
   return p.replace(/\\/g, "/");
@@ -398,7 +536,7 @@ function createWindow() {
     backgroundColor: "#09090b",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     webPreferences: {
-      preload: path4.join(__dirname, "preload.cjs"),
+      preload: path5.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
@@ -408,7 +546,7 @@ function createWindow() {
     win.loadURL("http://localhost:3000");
     win.webContents.openDevTools({ mode: "detach" });
   } else {
-    win.loadFile(path4.join(__dirname, "../../out/index.html"));
+    win.loadFile(path5.join(__dirname, "../../out/index.html"));
   }
   win.once("ready-to-show", () => win.show());
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -428,13 +566,13 @@ function registerHandlers() {
   });
   ipcMain.handle(IPC.FS_READ_DIR, async (_e, dirPath) => {
     try {
-      const entries = fs3.readdirSync(dirPath, { withFileTypes: true });
+      const entries = fs4.readdirSync(dirPath, { withFileTypes: true });
       return entries.filter((e) => !e.name.startsWith(".")).map((e) => ({
         name: e.name,
         // Always return forward-slash paths so the renderer is consistent
-        path: norm2(path4.join(dirPath, e.name)),
+        path: norm2(path5.join(dirPath, e.name)),
         type: e.isDirectory() ? "directory" : "file",
-        extension: e.isFile() ? path4.extname(e.name).toLowerCase() : void 0
+        extension: e.isFile() ? path5.extname(e.name).toLowerCase() : void 0
       })).sort((a, b) => {
         if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
         return a.name.localeCompare(b.name, "es", { numeric: true });
@@ -444,7 +582,7 @@ function registerHandlers() {
     }
   });
   ipcMain.handle(IPC.FS_READ_FILE, async (_e, filePath) => {
-    const buf = fs3.readFileSync(filePath);
+    const buf = fs4.readFileSync(filePath);
     return buf.toString("base64");
   });
   ipcMain.handle(IPC.FS_MOVE, async (_e, { from, to }) => {
@@ -508,15 +646,54 @@ function registerHandlers() {
       }
     });
   });
-  ipcMain.handle(IPC.INDEX_SEARCH, async (_e, query) => {
+  ipcMain.handle(IPC.INDEX_SEARCH, async (_e, query, rootPath) => {
     try {
-      return getIndexer().search(query);
+      return getIndexer().search(query, rootPath);
     } catch {
       return [];
     }
   });
   ipcMain.handle(IPC.INDEX_CLEAR, async (_e, rootPath) => {
     getIndexer().clearRoot(rootPath);
+  });
+  ipcMain.handle(
+    IPC.CONTENT_STORE,
+    (_e, filePath, name, rootPath, pages) => {
+      try {
+        getIndexer().storePdfContent(filePath, name, rootPath, pages);
+      } catch (err) {
+        console.error("[CONTENT ERROR] store:", err);
+      }
+    }
+  );
+  ipcMain.handle(IPC.CONTENT_SEARCH, (_e, query, rootPath) => {
+    try {
+      return getIndexer().searchContent(query, rootPath);
+    } catch {
+      return [];
+    }
+  });
+  ipcMain.handle(IPC.CONTENT_HAS_INDEX, (_e, rootPath) => {
+    try {
+      return getIndexer().hasContentIndex(rootPath);
+    } catch {
+      return false;
+    }
+  });
+  ipcMain.handle(IPC.CONTENT_CLEAR, (_e, rootPath) => {
+    try {
+      getIndexer().clearContent(rootPath);
+    } catch (err) {
+      console.error("[CONTENT ERROR] clear:", err);
+    }
+  });
+  ipcMain.handle(IPC.PDF_EXTRACT_TEXT, async (_e, filePath) => {
+    try {
+      return await extractPdfPages(filePath);
+    } catch (err) {
+      console.error("[PDF EXTRACT] Error:", filePath, err);
+      throw err;
+    }
   });
   ipcMain.handle(IPC.SHELL_SHOW_FILE, (_e, filePath) => {
     shell.showItemInFolder(filePath);

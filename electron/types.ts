@@ -30,3 +30,15 @@ export interface SearchResult {
   path: string;
   extension: string;
 }
+
+export interface PdfPageText {
+  page: number;
+  text: string;
+}
+
+export interface ContentSearchResult {
+  path: string;
+  name: string;
+  page: number;
+  snippet: string;
+}

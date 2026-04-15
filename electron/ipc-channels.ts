@@ -27,6 +27,13 @@ export const IPC = {
   INDEX_COMPLETE:      "index:complete",
   INDEX_SEARCH:        "index:search",
   INDEX_CLEAR:         "index:clear",
+  // Content (full-text PDF) search
+  CONTENT_STORE:       "content:store",
+  CONTENT_SEARCH:      "content:search",
+  CONTENT_HAS_INDEX:   "content:has-index",
+  CONTENT_CLEAR:       "content:clear",
+  // PDF text extraction (main process, bypasses renderer worker issues)
+  PDF_EXTRACT_TEXT:    "pdf:extract-text",
   // Shell utilities
   SHELL_SHOW_FILE:     "shell:show-item",
   // Revision — generic step I/O (no new channels needed when adding future steps)

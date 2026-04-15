@@ -29,6 +29,13 @@ var IPC = {
   INDEX_COMPLETE: "index:complete",
   INDEX_SEARCH: "index:search",
   INDEX_CLEAR: "index:clear",
+  // Content (full-text PDF) search
+  CONTENT_STORE: "content:store",
+  CONTENT_SEARCH: "content:search",
+  CONTENT_HAS_INDEX: "content:has-index",
+  CONTENT_CLEAR: "content:clear",
+  // PDF text extraction (main process, bypasses renderer worker issues)
+  PDF_EXTRACT_TEXT: "pdf:extract-text",
   // Shell utilities
   SHELL_SHOW_FILE: "shell:show-item",
   // Revision — generic step I/O (no new channels needed when adding future steps)
@@ -65,10 +72,17 @@ import_electron.contextBridge.exposeInMainWorld("api", {
   onFsChange: (cb) => on(IPC.FS_EVENT_CHANGE, cb),
   // ── Indexer ────────────────────────────────────────────────────────────────
   startIndex: (rootPath) => import_electron.ipcRenderer.invoke(IPC.INDEX_START, rootPath),
-  searchIndex: (query) => import_electron.ipcRenderer.invoke(IPC.INDEX_SEARCH, query),
+  searchIndex: (query, rootPath) => import_electron.ipcRenderer.invoke(IPC.INDEX_SEARCH, query, rootPath),
   clearIndex: (rootPath) => import_electron.ipcRenderer.invoke(IPC.INDEX_CLEAR, rootPath),
   onIndexProgress: (cb) => on(IPC.INDEX_PROGRESS, cb),
   onIndexComplete: (cb) => on(IPC.INDEX_COMPLETE, cb),
+  // ── Content (full-text PDF) search ────────────────────────────────────────
+  storePdfContent: (filePath, name, rootPath, pages) => import_electron.ipcRenderer.invoke(IPC.CONTENT_STORE, filePath, name, rootPath, pages),
+  searchContent: (query, rootPath) => import_electron.ipcRenderer.invoke(IPC.CONTENT_SEARCH, query, rootPath),
+  hasContentIndex: (rootPath) => import_electron.ipcRenderer.invoke(IPC.CONTENT_HAS_INDEX, rootPath),
+  clearContentIndex: (rootPath) => import_electron.ipcRenderer.invoke(IPC.CONTENT_CLEAR, rootPath),
+  // ── PDF text extraction ────────────────────────────────────────────────────
+  extractPdfText: (filePath) => import_electron.ipcRenderer.invoke(IPC.PDF_EXTRACT_TEXT, filePath),
   // ── Shell utilities ────────────────────────────────────────────────────────
   showInFolder: (filePath) => import_electron.ipcRenderer.invoke(IPC.SHELL_SHOW_FILE, filePath),
   // ── Revision ───────────────────────────────────────────────────────────────
