@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useEffect, useCallback, useRef, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { Group as PanelGroup, Panel, Separator as PanelSeparator, usePanelRef } from "react-resizable-panels";
 import { ActivityBar } from "./ActivityBar";
@@ -112,6 +112,11 @@ export function WorkbenchLayout() {
   const { contextTinting, zenMode, readingMode, setReadingMode, autoReadingMode, readingModeStartHour } = useUXStore();
   const { revisionPath, meta } = useRevisionStore();
   const inElectron = useIsElectron();
+
+  const tintStyle = useMemo(
+    () => (contextTinting && meta?.expedienteId ? getTintStyle(meta.expedienteId) : undefined),
+    [contextTinting, meta?.expedienteId],
+  );
   const sidebarRef    = usePanelRef();
   const rightPanelRef = usePanelRef();
 
@@ -303,7 +308,7 @@ export function WorkbenchLayout() {
         "flex h-screen flex-col overflow-hidden bg-background transition-colors duration-1000",
       )}
       style={{
-        background: contextTinting && meta?.expedienteId ? getTintStyle(meta.expedienteId) : undefined,
+        background: tintStyle,
         filter: readingMode ? "sepia(0.4) brightness(0.9) contrast(1.05)" : undefined,
         transition: "filter 0.6s ease",
       }}

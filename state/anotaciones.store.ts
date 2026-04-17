@@ -33,7 +33,6 @@ const EMPTY_STATE = {
   activeColor:         "yellow" as AnnotationColor,
   undoStack:           [] as Annotation[][],
   redoStack:           [] as Annotation[][],
-  currentVisiblePage:  1,
 };
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -48,7 +47,6 @@ interface AnotacionesState {
   activeColor:         AnnotationColor;
   undoStack:           Annotation[][];
   redoStack:           Annotation[][];
-  currentVisiblePage:  number;
 
   // Lifecycle
   loadAnotaciones:   (revisionPath: string) => Promise<void>;
@@ -70,7 +68,6 @@ interface AnotacionesState {
   setActiveColor:         (color: AnnotationColor) => void;
   navigateTo:             (filePath: string, pageNumber: number, highlightAnnotationId?: string, targetPane?: "left" | "right") => void;
   clearPendingNavigation: () => void;
-  setCurrentVisiblePage:  (page: number) => void;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -180,7 +177,6 @@ export const useAnotacionesStore = create<AnotacionesState>((set, get) => ({
   setActiveColor:         (c)        => set({ activeColor: c }),
   navigateTo:             (fp, pg, hid?, pane?) => set({ pendingNavigation: { filePath: fp, pageNumber: pg, highlightAnnotationId: hid, targetPane: pane } }),
   clearPendingNavigation: ()         => set({ pendingNavigation: null }),
-  setCurrentVisiblePage:  (page)     => set({ currentVisiblePage: page }),
 }));
 
 // ─── Debounced save ────────────────────────────────────────────────────────────

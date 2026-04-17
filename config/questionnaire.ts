@@ -1,29 +1,30 @@
 import type { Question } from "@/types/expediente";
 
-/**
- * Static questionnaire template for expediente review.
- * Replace/extend with backend-fetched questions when backend is ready.
- */
 export const QUESTIONNAIRE_TEMPLATE: Question[] = [
-  // ── Admisibilidad ──────────────────────────────────────────────────────────
-  { id: "q1",  text: "¿El expediente cuenta con la demanda inicial?",         category: "Admisibilidad", required: true },
-  { id: "q2",  text: "¿La demanda está debidamente firmada?",                 category: "Admisibilidad", required: true },
-  { id: "q3",  text: "¿Se adjuntaron los anexos requeridos?",                 category: "Admisibilidad" },
-  { id: "q4",  text: "¿Existe acuerdo de admisión?",                          category: "Admisibilidad", required: true },
-  // ── Notificación ──────────────────────────────────────────────────────────
-  { id: "q5",  text: "¿Se realizó el emplazamiento al demandado?",            category: "Notificación",  required: true },
-  { id: "q6",  text: "¿Consta constancia de notificación en autos?",          category: "Notificación" },
-  { id: "q7",  text: "¿Las notificaciones se realizaron en tiempo y forma?",  category: "Notificación" },
-  // ── Contestación ──────────────────────────────────────────────────────────
-  { id: "q8",  text: "¿Existe contestación de demanda?",                      category: "Contestación",  required: true },
-  { id: "q9",  text: "¿La contestación fue presentada en tiempo?",            category: "Contestación",  required: true },
-  { id: "q10", text: "¿La contestación incluye ofrecimiento de pruebas?",     category: "Contestación" },
-  // ── Pruebas ───────────────────────────────────────────────────────────────
-  { id: "q11", text: "¿Se admitieron las pruebas ofrecidas?",                 category: "Pruebas" },
-  { id: "q12", text: "¿Existe acuerdo de desahogo de pruebas?",               category: "Pruebas" },
-  { id: "q13", text: "¿Las pruebas documentales están debidamente certificadas?", category: "Pruebas" },
-  // ── Sentencia ─────────────────────────────────────────────────────────────
-  { id: "q14", text: "¿Existe sentencia definitiva?",                         category: "Sentencia",     required: true },
-  { id: "q15", text: "¿La sentencia está debidamente fundada y motivada?",    category: "Sentencia",     required: true },
-  { id: "q16", text: "¿Existe constancia de notificación de la sentencia?",   category: "Sentencia" },
+  // ── Identificación ────────────────────────────────────────────────────────
+  { id: "q_ident_completo",    category: "Identificación",  text: "¿El expediente contiene identificación completa de las partes?" },
+  { id: "q_ident_domicilio",   category: "Identificación",  text: "¿Se acredita domicilio de las partes?" },
+  { id: "q_ident_representante", category: "Identificación", text: "¿El representante legal cuenta con poder notarial vigente?" },
+
+  // ── Documentos obligatorios ───────────────────────────────────────────────
+  { id: "q_doc_demanda",       category: "Documentos",      text: "¿La demanda o escrito inicial está presente?" },
+  { id: "q_doc_contestacion",  category: "Documentos",      text: "¿La contestación a la demanda está presente?" },
+  { id: "q_doc_pruebas",       category: "Documentos",      text: "¿Las pruebas ofrecidas están debidamente integradas?" },
+  { id: "q_doc_notificaciones",category: "Documentos",      text: "¿Las notificaciones constan en el expediente?" },
+  { id: "q_doc_acuerdos",      category: "Documentos",      text: "¿Los acuerdos del juzgado están completos?" },
+
+  // ── Plazos y términos ─────────────────────────────────────────────────────
+  { id: "q_plazos_demanda",    category: "Plazos",          text: "¿La demanda se presentó dentro del término legal?" },
+  { id: "q_plazos_contestacion", category: "Plazos",        text: "¿La contestación fue presentada en tiempo?" },
+  { id: "q_plazos_recursos",   category: "Plazos",          text: "¿Los recursos o apelaciones se interpusieron en tiempo y forma?" },
+
+  // ── Firma y autenticidad ──────────────────────────────────────────────────
+  { id: "q_firma_partes",      category: "Autenticidad",    text: "¿Los documentos cuentan con firma de las partes?" },
+  { id: "q_firma_autoridad",   category: "Autenticidad",    text: "¿Los acuerdos y resoluciones tienen firma del juzgador?" },
+  { id: "q_firma_sello",       category: "Autenticidad",    text: "¿Los documentos oficiales tienen sello de la autoridad?" },
+
+  // ── Resolución ────────────────────────────────────────────────────────────
+  { id: "q_res_sentencia",     category: "Resolución",      text: "¿Existe sentencia definitiva?" },
+  { id: "q_res_ejecutoria",    category: "Resolución",      text: "¿La sentencia causó ejecutoria?" },
+  { id: "q_res_cumplimiento",  category: "Resolución",      text: "¿Consta el cumplimiento de la sentencia?" },
 ];

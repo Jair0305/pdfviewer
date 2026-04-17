@@ -58,6 +58,13 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+/** Pages rendered around the current visible page. Pages outside this window
+ *  are replaced with a same-sized placeholder, keeping scroll geometry intact
+ *  while eliminating hundreds of canvas elements for large PDFs. */
+const RENDER_WINDOW = 4;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const COLOR_DOT: Record<AnnotationColor, string> = {
@@ -99,14 +106,25 @@ interface NotePopupProps {
 }
 
 function NotePopup({ state, pageWidth, pageHeight, onClose }: NotePopupProps) {
-  const { updateAnnotationText, annotations } = useAnotacionesStore();
-  const annotation = annotations.find((a) => a.id === state.annotationId);
+  const updateAnnotationText = useAnotacionesStore((s) => s.updateAnnotationText);
+  // Read initial text once — local state owns the textarea from here on.
+  // Flushing to store only on blur/close prevents per-keystroke store updates
+  // (which caused PdfViewer + all pages to re-render on every character typed).
+  const initialText = useAnotacionesStore((s) => s.annotations.find((a) => a.id === state.annotationId)?.text ?? "");
+  const [text, setText] = useState(initialText);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const t = setTimeout(() => textareaRef.current?.focus(), 60);
     return () => clearTimeout(t);
   }, []);
+
+  const flush = (value: string) => updateAnnotationText(state.annotationId, value);
+
+  const handleClose = (value: string) => {
+    flush(value);
+    onClose();
+  };
 
   // Position popup to the bottom-right of the stroke endpoint, clamped to page bounds
   const POPUP_W = 200;
@@ -119,7 +137,6 @@ function NotePopup({ state, pageWidth, pageHeight, onClose }: NotePopupProps) {
     <div
       style={{ position: "absolute", left, top, width: POPUP_W, zIndex: 30 }}
       className="rounded-xl border border-border/60 bg-background/85 backdrop-blur-2xl shadow-2xl animate-in zoom-in-95 duration-150 ease-out overflow-hidden"
-      // Prevent clicks on the popup from propagating to the page (which would close it or start drawing)
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -127,7 +144,7 @@ function NotePopup({ state, pageWidth, pageHeight, onClose }: NotePopupProps) {
       <div className="flex items-center justify-between border-b px-2.5 py-1">
         <span className="text-[10px] font-medium text-muted-foreground">Añadir nota</span>
         <button
-          onClick={onClose}
+          onClick={() => handleClose(text)}
           className="rounded p-0.5 text-muted-foreground/60 hover:text-foreground"
           title="Cerrar (Esc)"
         >
@@ -137,15 +154,16 @@ function NotePopup({ state, pageWidth, pageHeight, onClose }: NotePopupProps) {
         </button>
       </div>
 
-      {/* Textarea */}
+      {/* Textarea — controlled by local state only; store updated on blur/close */}
       <textarea
         ref={textareaRef}
-        value={annotation?.text ?? ""}
-        onChange={(e) => updateAnnotationText(state.annotationId, e.target.value)}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={(e) => flush(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Escape") onClose();
-          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) onClose();
-          e.stopPropagation(); // don't let Escape reach PdfViewer keyboard handler
+          if (e.key === "Escape") { handleClose(text); }
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { handleClose(text); }
+          e.stopPropagation();
         }}
         placeholder="Escribe tu apunte… (Ctrl+Enter para cerrar)"
         rows={3}
@@ -160,7 +178,7 @@ function NotePopup({ state, pageWidth, pageHeight, onClose }: NotePopupProps) {
       <div className="flex items-center justify-between border-t px-2.5 py-1">
         <span className="text-[9px] text-muted-foreground/40">Esc para cerrar</span>
         <button
-          onClick={onClose}
+          onClick={() => handleClose(text)}
           className="rounded bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground hover:opacity-90"
         >
           Listo
@@ -293,12 +311,13 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
   // UX/Health Settings
   const { privacyBlur, zenMode, setZenMode, lighthouseMode } = useUXStore();
 
-  const [mouseY, setMouseY] = useState(0);
+  const lighthouseOverlayRef = useRef<HTMLDivElement>(null);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!lighthouseMode) return;
+    if (!lighthouseMode || !lighthouseOverlayRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    setMouseY(e.clientY - rect.top);
+    const y = e.clientY - rect.top;
+    lighthouseOverlayRef.current.style.top = `${y - 30}px`;
   }, [lighthouseMode]);
 
   const root = useExplorerStore((s) => s.root);
@@ -433,7 +452,6 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
     setActiveColor,
     setEditingAnnotation,
     clearPendingNavigation,
-    setCurrentVisiblePage,
     undo,
     redo,
     undoStack,
@@ -461,17 +479,40 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
     return `/${file.name}`;
   }, [file, expedientePath]);
 
+  // Pre-bucket annotations and citas by page — avoids O(annotations × pages) filter in render loop
+  const annotationsByPage = useMemo(() => {
+    const map: Record<number, typeof annotations> = {};
+    if (!relativeFilePath) return map;
+    for (const ann of annotations) {
+      if (ann.relativeFilePath === relativeFilePath && ann.pageNumber != null) {
+        (map[ann.pageNumber] ??= []).push(ann);
+      }
+    }
+    return map;
+  }, [annotations, relativeFilePath]);
+
+  const citasByPage = useMemo(() => {
+    const map: Record<number, typeof citas> = {};
+    if (!relativeFilePath) return map;
+    for (const cita of citas) {
+      if (cita.relativeFilePath === relativeFilePath && cita.pageNumber != null) {
+        (map[cita.pageNumber] ??= []).push(cita);
+      }
+      if (cita.targetRelativeFilePath === relativeFilePath && cita.targetPageNumber != null) {
+        const p = cita.targetPageNumber;
+        const arr = (map[p] ??= []);
+        if (!arr.find((c) => c.id === cita.id)) arr.push(cita);
+      }
+    }
+    return map;
+  }, [citas, relativeFilePath]);
+
   // ── Debounce renderScale behind scale to avoid per-keystroke canvas redraws ──
   useEffect(() => {
     if (renderScaleTimerRef.current) clearTimeout(renderScaleTimerRef.current);
     renderScaleTimerRef.current = setTimeout(() => setRenderScale(scale), 250);
   }, [scale]);
 
-  // ── Page change side effects ─────────────────────────────────────────────
-  useEffect(() => {
-    setCurrentVisiblePage(currentPage);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]);
 
   // ── Load PDF via IPC → Blob URL ──────────────────────────────────────────
   useEffect(() => {
@@ -1083,10 +1124,11 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
       `}</style>
 
       {lighthouseMode && (
-        <div 
-          className="pointer-events-none absolute left-0 right-0 z-[50] transition-all duration-75 backdrop-brightness-[1.1] backdrop-contrast-[1.1]"
-          style={{ 
-            top: `${mouseY - 30}px`, 
+        <div
+          ref={lighthouseOverlayRef}
+          className="pointer-events-none absolute left-0 right-0 z-[50] backdrop-brightness-[1.1] backdrop-contrast-[1.1]"
+          style={{
+            top: '-30px',
             height: '60px',
             background: 'linear-gradient(to bottom, transparent, rgba(59, 130, 246, 0.05), transparent)',
             borderTop: '1px solid rgba(59, 130, 246, 0.1)',
@@ -1295,237 +1337,159 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
               <div className="flex flex-col items-center gap-8 py-8 px-4">
                 {numPages > 0 &&
                   Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
-                    const pageAnnotations = relativeFilePath
-                      ? annotations.filter(
-                          (a) =>
-                            a.relativeFilePath === relativeFilePath &&
-                            a.pageNumber === pageNum,
-                        )
-                      : [];
+                    const pageAnnotations = annotationsByPage[pageNum] ?? [];
+                    const pageCitas       = citasByPage[pageNum] ?? [];
+                    const pageCitaCount   = pageCitas.length;
 
-                    const intrinsic = pageIntrinsics[pageNum] ?? { w: 595, h: 842 };
+                    const intrinsic    = pageIntrinsics[pageNum] ?? { w: 595, h: 842 };
                     const pageRotation = getPageRotation(pageNum);
 
                     // Display dimensions at current (visual) scale
-                    const pageW = pageRotation === 90 || pageRotation === 270
-                      ? intrinsic.h * scale
-                      : intrinsic.w * scale;
-                    const pageH = pageRotation === 90 || pageRotation === 270
-                      ? intrinsic.w * scale
-                      : intrinsic.h * scale;
+                    const isLandscape = pageRotation === 90 || pageRotation === 270;
+                    const pageW = isLandscape ? intrinsic.h * scale : intrinsic.w * scale;
+                    const pageH = isLandscape ? intrinsic.w * scale : intrinsic.h * scale;
 
-                    // Rendered dimensions at the debounced scale
-                    const renderPageW = pageRotation === 90 || pageRotation === 270
-                      ? intrinsic.h * renderScale
-                      : intrinsic.w * renderScale;
-                    const renderPageH = pageRotation === 90 || pageRotation === 270
-                      ? intrinsic.w * renderScale
-                      : intrinsic.h * renderScale;
+                    // Only render heavy content (canvas + overlays) for pages near the viewport.
+                    // Outer div always present so scroll geometry and IntersectionObserver stay correct.
+                    const isInWindow = Math.abs(pageNum - currentPage) <= RENDER_WINDOW;
 
-                    // CSS scale factor: stretches renderScale content to fill displayScale area
+                    // Rendered dimensions at the debounced scale (only needed in-window)
+                    const renderPageW = isLandscape ? intrinsic.h * renderScale : intrinsic.w * renderScale;
+                    const renderPageH = isLandscape ? intrinsic.w * renderScale : intrinsic.h * renderScale;
                     const cssScaleFactor = renderScale > 0 ? scale / renderScale : 1;
 
-                      // Badge: pages that are the SOURCE or TARGET of any cita
-                      const pageCitas = relativeFilePath
-                        ? citas.filter((c) =>
-                            (c.relativeFilePath === relativeFilePath && c.pageNumber === pageNum) ||
-                            (c.targetRelativeFilePath === relativeFilePath && c.targetPageNumber === pageNum)
-                          )
-                        : [];
-                      const pageCitaCount = pageCitas.length;
+                    return (
+                      <div
+                        key={pageNum}
+                        ref={makePageRef(pageNum)}
+                        data-page={pageNum}
+                        className="relative shadow-md border ring-1 ring-black/5 dark:ring-white/5 overflow-hidden"
+                        style={{ width: pageW, height: pageH }}
+                        onMouseUp={isInWindow ? (e) => handlePageMouseUp(e, pageNum) : undefined}
+                      >
+                        {isInWindow ? (
+                          <>
+                            {/* Drop overlay — pointer-events flipped synchronously via dropOverlayRefs on drag start */}
+                            <div
+                              ref={(el) => {
+                                if (el) dropOverlayRefs.current.set(pageNum, el);
+                                else dropOverlayRefs.current.delete(pageNum);
+                              }}
+                              className="absolute inset-0 z-20"
+                              style={{ pointerEvents: "none" }}
+                              onWheel={(e) => { mainScrollRef.current?.scrollBy({ top: e.deltaY }); }}
+                              onDragOver={(e) => { if (e.dataTransfer.types.includes(CITA_DRAG_TYPE)) e.preventDefault(); }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                const raw = e.dataTransfer.getData(CITA_DRAG_TYPE);
+                                if (!raw) return;
+                                const payload = JSON.parse(raw) as CitaDragPayload;
+                                if (payload.relativeFilePath === relativeFilePath && payload.pageNumber === pageNum) return;
+                                addCita({
+                                  id:                     crypto.randomUUID(),
+                                  text:                   payload.text,
+                                  relativeFilePath:       payload.relativeFilePath,
+                                  pageNumber:             payload.pageNumber,
+                                  color:                  payload.color,
+                                  note:                   "",
+                                  createdAt:              new Date().toISOString(),
+                                  rects:                  payload.normalizedRects.length > 0 ? payload.normalizedRects : undefined,
+                                  targetRelativeFilePath: relativeFilePath ?? undefined,
+                                  targetPageNumber:       pageNum,
+                                });
+                                setRightPanelTab("citas");
+                              }}
+                            />
 
-                      return (
-                        <div
-                          key={pageNum}
-                          ref={makePageRef(pageNum)}
-                          data-page={pageNum}
-                          className="relative shadow-md border ring-1 ring-black/5 dark:ring-white/5 overflow-hidden transition-all duration-500"
-                          style={{ width: pageW, height: pageH }}
-                          onMouseUp={(e) => handlePageMouseUp(e, pageNum)}
-                        >
-                        {/*
-                          Drop overlay — sits above the PDF.js canvas/text-layer so that
-                          drag events reach a React element before Chromium checks preventDefault.
-                          Starts pointer-events: none (PDF interaction unaffected).
-                          Flipped to "all" synchronously via dropOverlayRefs when a cita drag starts,
-                          so the first dragover already finds a valid drop target.
-                        */}
-                        <div
-                          ref={(el) => {
-                            if (el) dropOverlayRefs.current.set(pageNum, el);
-                            else dropOverlayRefs.current.delete(pageNum);
-                          }}
-                          className="absolute inset-0 z-20"
-                          style={{ pointerEvents: "none" }}
-                          onWheel={(e) => {
-                            // Forward scroll events to the scroll container so the
-                            // user can scroll to find the target page while dragging.
-                            mainScrollRef.current?.scrollBy({ top: e.deltaY });
-                          }}
-                          onDragOver={(e) => {
-                            if (e.dataTransfer.types.includes(CITA_DRAG_TYPE)) {
-                              e.preventDefault();
-                            }
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            const raw = e.dataTransfer.getData(CITA_DRAG_TYPE);
-                            if (!raw) return;
-                            const payload = JSON.parse(raw) as CitaDragPayload;
-                            if (
-                              payload.relativeFilePath === relativeFilePath &&
-                              payload.pageNumber === pageNum
-                            ) return;
-
-                            const citaId = crypto.randomUUID();
-                            addCita({
-                              id:                     citaId,
-                              text:                   payload.text,
-                              relativeFilePath:       payload.relativeFilePath,
-                              pageNumber:             payload.pageNumber,
-                              color:                  payload.color,
-                              note:                   "",
-                              createdAt:              new Date().toISOString(),
-                              rects:                  payload.normalizedRects.length > 0 ? payload.normalizedRects : undefined,
-                              targetRelativeFilePath: relativeFilePath ?? undefined,
-                              targetPageNumber:       pageNum,
-                            });
-
-                            setRightPanelTab("citas");
-                          }}
-                        />
-                        {/* Citation link badge — shown on source AND target pages */}
-                        {pageCitaCount > 0 && (
-                          <button
-                            className="absolute top-1 right-1 z-30 flex items-center gap-0.5 rounded-full bg-amber-500/80 px-1.5 py-0.5 text-white hover:bg-amber-500 transition-colors shadow-sm"
-                            title={`${pageCitaCount} cita${pageCitaCount > 1 ? "s" : ""} vinculada${pageCitaCount > 1 ? "s" : ""} a esta página`}
-                            onClick={(e) => { e.stopPropagation(); setRightPanelTab("citas"); }}
-                          >
-                            <IconQuote size={8} />
-                            {pageCitaCount > 1 && (
-                              <span className="text-[8px] font-semibold leading-none">{pageCitaCount}</span>
-                            )}
-                          </button>
-                        )}
-                        {/* Cita highlight rects — colored overlay on cited text */}
-                        {pageCitas.some((c) => c.rects?.length) && (
-                          <svg
-                            style={{
-                              position: "absolute",
-                              inset: 0,
-                              width: pageW,
-                              height: pageH,
-                              pointerEvents: "none",
-                              zIndex: 8,
-                            }}
-                          >
-                            {pageCitas.flatMap((cita) =>
-                              (cita.rects ?? []).map((rect, i) => {
-                                // toRotatedRect needs unrotated intrinsic dims (same as AnnotationOverlay's canonW/H)
-                                const r = toRotatedRect(rect, intrinsic.w * scale, intrinsic.h * scale, pageRotation);
-                                return (
-                                  <rect
-                                    key={`${cita.id}-${i}`}
-                                    x={r.x} y={r.y} width={r.w} height={r.h}
-                                    fill={CITA_FILL[cita.color]}
-                                  />
-                                );
-                              })
-                            )}
-                          </svg>
-                        )}
-
-                        {/*
-                          Inner wrapper: rendered at renderScale, CSS-scaled to displayScale.
-                          This means the PDF canvas is never blank during rapid zoom —
-                          the old render stays visible (just blurry) until the new render completes.
-                        */}
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            width: renderPageW,
-                            height: renderPageH,
-                            transform: `scale(${cssScaleFactor})`,
-                            transformOrigin: "top left",
-                          }}
-                        >
-                          <Page
-                            pageNumber={pageNum}
-                            scale={renderScale}
-                            rotate={getPageRotation(pageNum)}
-                            renderTextLayer
-                            renderAnnotationLayer
-                            customTextRenderer={customTextRenderer}
-                            onRenderSuccess={({ originalWidth, originalHeight }) => {
-                              setPageIntrinsics((prev) => ({
-                                ...prev,
-                                [pageNum]: { w: originalWidth, h: originalHeight },
-                              }));
-                            }}
-                            loading={
-                              <div
-                                style={{
-                                  width:  Math.round(intrinsic.w * renderScale),
-                                  height: Math.round(intrinsic.h * renderScale),
-                                }}
-                                className="flex flex-col p-8 gap-5 bg-white dark:bg-zinc-800 rounded shadow-sm border border-border/10 overflow-hidden"
+                            {/* Citation badge */}
+                            {pageCitaCount > 0 && (
+                              <button
+                                className="absolute top-1 right-1 z-30 flex items-center gap-0.5 rounded-full bg-amber-500/80 px-1.5 py-0.5 text-white hover:bg-amber-500 transition-colors shadow-sm"
+                                title={`${pageCitaCount} cita${pageCitaCount > 1 ? "s" : ""} vinculada${pageCitaCount > 1 ? "s" : ""} a esta página`}
+                                onClick={(e) => { e.stopPropagation(); setRightPanelTab("citas"); }}
                               >
-                                <div className="w-2/3 h-6 bg-muted/40 rounded animate-pulse" />
-                                <div className="w-full h-3 bg-muted/20 rounded mt-4 animate-pulse" />
-                                <div className="w-full h-3 bg-muted/20 rounded animate-pulse" />
-                                <div className="w-5/6 h-3 bg-muted/20 rounded animate-pulse" />
-                                <div className="w-full h-3 bg-muted/20 rounded animate-pulse" />
-                                <div className="w-4/5 h-3 bg-muted/20 rounded animate-pulse" />
-                              </div>
-                            }
-                          />
-                        </div>
+                                <IconQuote size={8} />
+                                {pageCitaCount > 1 && <span className="text-[8px] font-semibold leading-none">{pageCitaCount}</span>}
+                              </button>
+                            )}
 
-                        {/*
-                          Annotation overlay lives at display scale (outside the CSS transform).
-                          This keeps drawing coordinates correct regardless of renderScale.
-                        */}
-                        <AnnotationOverlay
-                          pageNumber={pageNum}
-                          scale={scale}
-                          rotation={pageRotation}
-                          intrinsicWidth={intrinsic.w}
-                          intrinsicHeight={intrinsic.h}
-                          annotationMode={annotationMode}
-                          activeColor={activeColor}
-                          annotations={pageAnnotations}
-                          flashingAnnotationId={flashingAnnotationId}
-                          onCreated={(path, endX, endY) =>
-                            handleAnnotationCreated(pageNum, path, endX, endY)
-                          }
-                          onAnnotationClick={handleAnnotationClick}
-                          onAnnotationDelete={handleAnnotationDelete}
-                        />
+                            {/* Cita highlight rects */}
+                            {pageCitas.some((c) => c.rects?.length) && (
+                              <svg style={{ position: "absolute", inset: 0, width: pageW, height: pageH, pointerEvents: "none", zIndex: 8 }}>
+                                {pageCitas.flatMap((cita) =>
+                                  (cita.rects ?? []).map((rect, i) => {
+                                    const r = toRotatedRect(rect, intrinsic.w * scale, intrinsic.h * scale, pageRotation);
+                                    return <rect key={`${cita.id}-${i}`} x={r.x} y={r.y} width={r.w} height={r.h} fill={CITA_FILL[cita.color]} />;
+                                  })
+                                )}
+                              </svg>
+                            )}
 
-                        {/* Page-level flash overlay */}
-                        {flashingPageNum === pageNum && (
-                          <div
-                            style={{
-                              position: "absolute",
-                              inset: 0,
-                              zIndex: 25,
-                              pointerEvents: "none",
-                              background: "rgba(245,158,11,0.3)",
-                              animation: "pageFlash 2s ease-out forwards",
-                            }}
-                          />
-                        )}
+                            {/* Inner wrapper: rendered at renderScale, CSS-scaled to displayScale */}
+                            <div
+                              style={{
+                                position: "absolute", top: 0, left: 0,
+                                width: renderPageW, height: renderPageH,
+                                transform: `scale(${cssScaleFactor})`,
+                                transformOrigin: "top left",
+                              }}
+                            >
+                              <Page
+                                pageNumber={pageNum}
+                                scale={renderScale}
+                                rotate={getPageRotation(pageNum)}
+                                renderTextLayer
+                                renderAnnotationLayer
+                                customTextRenderer={customTextRenderer}
+                                onRenderSuccess={({ originalWidth, originalHeight }) => {
+                                  setPageIntrinsics((prev) => ({
+                                    ...prev,
+                                    [pageNum]: { w: originalWidth, h: originalHeight },
+                                  }));
+                                }}
+                                loading={
+                                  <div
+                                    style={{ width: Math.round(intrinsic.w * renderScale), height: Math.round(intrinsic.h * renderScale) }}
+                                    className="flex flex-col p-8 gap-5 bg-white dark:bg-zinc-800 rounded shadow-sm border border-border/10 overflow-hidden"
+                                  >
+                                    <div className="w-2/3 h-6 bg-muted/40 rounded animate-pulse" />
+                                    <div className="w-full h-3 bg-muted/20 rounded mt-4 animate-pulse" />
+                                    <div className="w-full h-3 bg-muted/20 rounded animate-pulse" />
+                                    <div className="w-5/6 h-3 bg-muted/20 rounded animate-pulse" />
+                                    <div className="w-full h-3 bg-muted/20 rounded animate-pulse" />
+                                    <div className="w-4/5 h-3 bg-muted/20 rounded animate-pulse" />
+                                  </div>
+                                }
+                              />
+                            </div>
 
-                        {/* Note popup — appears after drawing, positioned within this page div */}
-                        {notePopup?.pageNum === pageNum && (
-                          <NotePopup
-                            state={notePopup}
-                            pageWidth={pageW}
-                            pageHeight={pageH}
-                            onClose={() => setNotePopup(null)}
-                          />
+                            {/* Annotation overlay — at display scale, outside CSS transform */}
+                            <AnnotationOverlay
+                              pageNumber={pageNum}
+                              scale={scale}
+                              rotation={pageRotation}
+                              intrinsicWidth={intrinsic.w}
+                              intrinsicHeight={intrinsic.h}
+                              annotationMode={annotationMode}
+                              activeColor={activeColor}
+                              annotations={pageAnnotations}
+                              flashingAnnotationId={flashingAnnotationId}
+                              onCreated={(path, endX, endY) => handleAnnotationCreated(pageNum, path, endX, endY)}
+                              onAnnotationClick={handleAnnotationClick}
+                              onAnnotationDelete={handleAnnotationDelete}
+                            />
+
+                            {flashingPageNum === pageNum && (
+                              <div style={{ position: "absolute", inset: 0, zIndex: 25, pointerEvents: "none", background: "rgba(245,158,11,0.3)", animation: "pageFlash 2s ease-out forwards" }} />
+                            )}
+
+                            {notePopup?.pageNum === pageNum && (
+                              <NotePopup state={notePopup} pageWidth={pageW} pageHeight={pageH} onClose={() => setNotePopup(null)} />
+                            )}
+                          </>
+                        ) : (
+                          /* Placeholder — keeps scroll geometry intact without rendering canvas/SVG */
+                          <div className="h-full w-full bg-white dark:bg-zinc-800" />
                         )}
                       </div>
                     );

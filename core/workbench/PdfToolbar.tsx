@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   IconZoomIn, IconZoomOut, IconMaximize,
   IconRotate, IconRotateClockwise,
@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useWorkbenchStore } from "@/state/workbench.store";
+import { useShallow } from "zustand/react/shallow";
 import { useAnotacionesStore } from "@/state/anotaciones.store";
 import { useDocStatusStore } from "@/state/docStatus.store";
 import { useRevisionStore } from "@/state/revision.store";
@@ -44,12 +45,15 @@ function computeRelPath(absPath: string, expedientePath: string): string {
 // ─── Toolbar ─────────────────────────────────────────────────────────────────
 
 export function PdfToolbar() {
-  const {
-    focusedPane, setFocusedPane,
-    paneState, _paneActions,
-    splitFile, setSplitFile,
-    syncScroll, setSyncScroll,
-  } = useWorkbenchStore();
+  const focusedPane  = useWorkbenchStore((s) => s.focusedPane);
+  const setFocusedPane = useWorkbenchStore((s) => s.setFocusedPane);
+  const splitFile    = useWorkbenchStore((s) => s.splitFile);
+  const setSplitFile = useWorkbenchStore((s) => s.setSplitFile);
+  const syncScroll   = useWorkbenchStore((s) => s.syncScroll);
+  const setSyncScroll = useWorkbenchStore((s) => s.setSyncScroll);
+  // Shallow selector — re-renders only when a field of the FOCUSED pane's state changes in value
+  const state   = useWorkbenchStore(useShallow((s) => s.paneState[s.focusedPane]));
+  const actions = useWorkbenchStore((s) => s._paneActions[s.focusedPane]);
 
   const {
     annotationMode, activeColor,
@@ -63,9 +67,6 @@ export function PdfToolbar() {
   const expedientePath    = useRevisionStore((s) => s.expedientePath);
   const { zenMode, setZenMode, readingMode } = useUXStore();
 
-  const state   = paneState[focusedPane];
-  const actions = _paneActions[focusedPane];
-
   // ── Page input local buffer ───────────────────────────────────────────────
   const [pageInput, setPageInput] = useState(String(state.currentPage));
   const isEditingPageRef = useRef(false);
@@ -78,7 +79,7 @@ export function PdfToolbar() {
   // Reset input when switching focused pane
   useEffect(() => {
     isEditingPageRef.current = false;
-    setPageInput(String(paneState[focusedPane].currentPage));
+    setPageInput(String(state.currentPage));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedPane]);
 
