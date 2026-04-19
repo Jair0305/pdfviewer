@@ -240,7 +240,7 @@ export function TabBar() {
     <>
       <div
         ref={scrollRef}
-        className="flex h-[38px] shrink-0 items-stretch overflow-x-auto border-b border-border bg-background/60 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 z-10 sticky top-0"
+        className="flex h-[38px] shrink-0 items-stretch overflow-x-auto border-b border-border bg-gradient-to-b from-background/80 to-background/40 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 z-10 sticky top-0"
         style={{ scrollbarWidth: "none" }}
         onDragLeave={() => setDragOverIndex(null)}
       >
@@ -314,10 +314,10 @@ function TabItem({
       title={tab.path}
       className={cn(
         "group relative flex min-w-0 max-w-[200px] shrink-0 items-center gap-2 border-r border-border px-3 text-[13px]",
-        "transition-all duration-200 ease-out select-none active:bg-muted/50",
+        "transition-all duration-150 ease-out select-none",
         isActive
-          ? "bg-background/80 text-foreground before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-primary shadow-sm"
-          : "bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground",
+          ? "bg-background text-primary font-medium before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-primary shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+          : "bg-muted/20 text-muted-foreground hover:bg-muted/50 hover:text-foreground",
         isDragOver && "bg-primary/10 outline outline-1 outline-primary/40",
         tab.isPinned && "pr-2",
       )}
@@ -328,7 +328,7 @@ function TabItem({
         <TabIcon type={tab.type} />
       )}
 
-      <span className="min-w-0 truncate text-xs">{tab.name}</span>
+      <span className={cn("min-w-0 truncate text-xs", isActive ? "font-semibold" : "font-medium")}>{tab.name}</span>
 
       {/* Close — hidden for pinned tabs */}
       {!tab.isPinned && (
@@ -336,8 +336,8 @@ function TabItem({
           role="button"
           onClick={onClose}
           className={cn(
-            "ml-0.5 shrink-0 rounded p-0.5 transition-opacity",
-            "opacity-0 hover:bg-accent group-hover:opacity-100",
+            "ml-0.5 shrink-0 rounded p-0.5 transition-opacity duration-200",
+            "opacity-0 hover:bg-accent/80 group-hover:opacity-100",
             isActive && "opacity-60",
           )}
         >

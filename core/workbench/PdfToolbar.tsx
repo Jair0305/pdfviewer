@@ -164,37 +164,39 @@ export function PdfToolbar() {
       <Separator orientation="vertical" className="mx-1 h-4" />
 
       {/* Page navigation */}
-      <button
-        onClick={() => actions?.goToPage(state.currentPage - 1)}
-        disabled={state.currentPage <= 1}
-        className="rounded p-0.5 text-muted-foreground/50 hover:bg-accent hover:text-foreground disabled:opacity-30"
-        title="Página anterior"
-      >
-        ‹
-      </button>
-      <input
-        type="text"
-        inputMode="numeric"
-        value={pageInput}
-        onFocus={() => { isEditingPageRef.current = true; }}
-        onChange={(e) => setPageInput(e.target.value)}
-        onKeyDown={handlePageKeyDown}
-        onBlur={() => {
-          isEditingPageRef.current = false;
-          setPageInput(String(state.currentPage));
-        }}
-        className="h-5 w-7 rounded border border-border bg-background text-center text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-primary/40"
-        title="Ir a página"
-      />
-      <span className="text-[10px] text-muted-foreground/50">/ {state.numPages || "—"}</span>
-      <button
-        onClick={() => actions?.goToPage(state.currentPage + 1)}
-        disabled={state.currentPage >= state.numPages}
-        className="rounded p-0.5 text-muted-foreground/50 hover:bg-accent hover:text-foreground disabled:opacity-30"
-        title="Página siguiente"
-      >
-        ›
-      </button>
+      <div className="flex items-center gap-0.5 bg-background border border-border/60 rounded-md px-1 py-0.5 shadow-sm">
+        <button
+          onClick={() => actions?.goToPage(state.currentPage - 1)}
+          disabled={state.currentPage <= 1}
+          className="rounded hover:bg-accent hover:text-foreground disabled:opacity-30 p-0.5 text-muted-foreground transition-all duration-150"
+          title="Página anterior"
+        >
+          ‹
+        </button>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={pageInput}
+          onFocus={() => { isEditingPageRef.current = true; }}
+          onChange={(e) => setPageInput(e.target.value)}
+          onKeyDown={handlePageKeyDown}
+          onBlur={() => {
+            isEditingPageRef.current = false;
+            setPageInput(String(state.currentPage));
+          }}
+          className="h-5 w-7 bg-transparent text-center text-[10px] font-mono font-medium focus:outline-none focus:ring-1 focus:ring-primary/40 rounded-sm"
+          title="Ir a página"
+        />
+        <span className="text-[10px] text-muted-foreground font-mono">/ {state.numPages || "—"}</span>
+        <button
+          onClick={() => actions?.goToPage(state.currentPage + 1)}
+          disabled={state.currentPage >= state.numPages}
+          className="rounded hover:bg-accent hover:text-foreground disabled:opacity-30 p-0.5 text-muted-foreground transition-all duration-150"
+          title="Página siguiente"
+        >
+          ›
+        </button>
+      </div>
 
       <Separator orientation="vertical" className="mx-1 h-4" />
 
@@ -245,45 +247,56 @@ export function PdfToolbar() {
 
       <Separator orientation="vertical" className="mx-1 h-4" />
 
-      {/* Annotation mode */}
-      <Button
-        variant={annotationMode === null ? "secondary" : "ghost"}
-        size="icon" className="h-6 w-6"
-        onClick={() => setAnnotationMode(null)}
-        title="Modo normal (cursor)"
-      >
-        <IconPointer size={13} />
-      </Button>
-      <Button
-        variant={isAnnotating ? "default" : "ghost"}
-        size="icon"
-        className={cn("h-6 w-6", isAnnotating && "bg-amber-500 hover:bg-amber-600 text-white dark:text-white")}
-        onClick={() => setAnnotationMode(isAnnotating ? null : "pen")}
-        title={isAnnotating ? "Salir modo lápiz (Esc / P)" : "Modo lápiz (P)"}
-      >
-        <IconPencil size={13} />
-      </Button>
-      <Button
-        variant={isErasing ? "default" : "ghost"}
-        size="icon"
-        className={cn("h-6 w-6", isErasing && "bg-red-500 hover:bg-red-600 text-white dark:text-white")}
-        onClick={() => setAnnotationMode(isErasing ? null : "erase")}
-        title={isErasing ? "Salir modo borrador (Esc / E)" : "Borrador (E)"}
-      >
-        <IconEraser size={13} />
-      </Button>
+      {/* Annotation mode - Segmented Control */}
+      <div className="flex items-center rounded-md bg-muted/50 p-0.5 border border-border/50">
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn("h-6 w-6 rounded-sm transition-all duration-150", annotationMode === null && "bg-background shadow-sm text-foreground")}
+          onClick={() => setAnnotationMode(null)}
+          title="Modo normal (cursor)"
+        >
+          <IconPointer size={13} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "h-6 w-6 rounded-sm transition-all duration-150",
+            isAnnotating && "bg-primary text-primary-foreground shadow-[0_0_8px_var(--color-primary)] ring-1 ring-primary/50"
+          )}
+          onClick={() => setAnnotationMode(isAnnotating ? null : "pen")}
+          title={isAnnotating ? "Salir modo lápiz (Esc / P)" : "Modo lápiz (P)"}
+        >
+          <IconPencil size={13} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "h-6 w-6 rounded-sm transition-all duration-150",
+            isErasing && "bg-destructive text-destructive-foreground shadow-[0_0_8px_var(--color-destructive)] ring-1 ring-destructive/50"
+          )}
+          onClick={() => setAnnotationMode(isErasing ? null : "erase")}
+          title={isErasing ? "Salir modo borrador (Esc / E)" : "Borrador (E)"}
+        >
+          <IconEraser size={13} />
+        </Button>
+      </div>
 
       {/* Color picker — only while pen active */}
       {isAnnotating && (
-        <div className="flex items-center gap-1 pl-1">
+        <div className="flex items-center gap-1.5 pl-2 animate-in fade-in slide-in-from-left-2 duration-200">
           {(["yellow", "green", "red", "blue"] as AnnotationColor[]).map((c) => (
             <button
               key={c}
               onClick={() => setActiveColor(c)}
               className={cn(
-                "h-3.5 w-3.5 rounded-full transition-all",
+                "h-4 w-4 rounded-full transition-all duration-200",
                 COLOR_DOT[c],
-                activeColor === c ? "ring-2 ring-primary ring-offset-1 scale-110" : "opacity-60 hover:opacity-100",
+                activeColor === c 
+                  ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-110 shadow-[0_0_10px_currentColor]" 
+                  : "opacity-60 hover:opacity-100 hover:scale-110 hover:shadow-[0_0_6px_currentColor]",
               )}
               title={c}
             />

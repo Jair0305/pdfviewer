@@ -54,6 +54,9 @@ interface WorkbenchState {
   setSidebarView: (view: SidebarView | null) => void;
   toggleSidebarView: (view: SidebarView) => void;
 
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
+
   rightPanelTab: RightPanelTab;
   setRightPanelTab: (tab: RightPanelTab) => void;
 
@@ -88,6 +91,9 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
     const { activeSidebarView } = get();
     set({ activeSidebarView: activeSidebarView === view ? null : view });
   },
+
+  settingsOpen: false,
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
 
   rightPanelTab:    "cuestionario",
   setRightPanelTab: (tab) => set({ rightPanelTab: tab }),

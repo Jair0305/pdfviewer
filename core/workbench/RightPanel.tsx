@@ -27,9 +27,9 @@ export function RightPanel({ questions }: RightPanelProps) {
   const bookmarksCount   = useBookmarksStore((s) => s.bookmarks.length);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-background">
+    <div className="flex h-full flex-col overflow-hidden bg-background shadow-[-4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-none z-10 border-l border-border/50">
       {/* Tab bar — scrollable so it stays usable at any panel width */}
-      <div className="flex shrink-0 items-stretch overflow-x-auto border-b border-border">
+      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-2 py-1.5">
         <TabButton
           label="Cuestionario"
           active={rightPanelTab === "cuestionario"}
@@ -61,7 +61,7 @@ export function RightPanel({ questions }: RightPanelProps) {
         />
       </div>
 
-      <Separator className="shrink-0" />
+
 
       {/* Panel content */}
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -94,10 +94,10 @@ function TabButton({
     <button
       onClick={onClick}
       className={cn(
-        "relative flex-1 min-w-[58px] py-[6px] text-xs font-medium transition-colors whitespace-nowrap px-3",
+        "relative flex-1 min-w-[58px] rounded-md py-1 text-xs font-medium transition-all duration-150 ease-out whitespace-nowrap px-3",
         active
-          ? "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-[1px] after:bg-primary"
-          : "text-muted-foreground hover:text-foreground",
+          ? "bg-primary/10 text-primary font-semibold shadow-sm"
+          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
       )}
     >
       {label}

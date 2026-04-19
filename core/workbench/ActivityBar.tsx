@@ -27,22 +27,22 @@ const BOTTOM_ITEMS: ActivityBarItem[] = [
 ];
 
 export function ActivityBar() {
-  const { activeSidebarView, toggleSidebarView } = useWorkbenchStore();
+  const { activeSidebarView, toggleSidebarView, setSettingsOpen } = useWorkbenchStore();
   const { indexStatus } = useExplorerStore();
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex h-full w-12 shrink-0 flex-col items-center border-r bg-background py-1">
+      <div className="flex h-full w-12 shrink-0 flex-col items-center border-r bg-[oklch(0.99_0_0)] dark:bg-[oklch(0.115_0_0)] py-1">
         {ITEMS.map(({ id, icon: Icon, label }) => (
           <Tooltip key={id}>
             <TooltipTrigger asChild>
               <button
                 onClick={() => toggleSidebarView(id)}
                 className={cn(
-                  "relative flex h-11 w-11 items-center justify-center rounded-md transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground",
+                  "relative flex h-11 w-11 items-center justify-center rounded-md transition-colors duration-150 ease-out",
+                  "hover:bg-accent/80 hover:text-accent-foreground",
                   activeSidebarView === id
-                    ? "text-foreground before:absolute before:left-0 before:h-6 before:w-0.5 before:rounded-r before:bg-primary"
+                    ? "text-primary before:absolute before:left-0 before:h-6 before:w-[3px] before:rounded-r-md before:bg-primary"
                     : "text-muted-foreground/60",
                 )}
               >
@@ -63,13 +63,17 @@ export function ActivityBar() {
           <Tooltip key={id}>
             <TooltipTrigger asChild>
               <button
-                onClick={() => toggleSidebarView(id)}
+                onClick={() => {
+                  if (id === "settings") {
+                    setSettingsOpen(true);
+                  } else {
+                    toggleSidebarView(id);
+                  }
+                }}
                 className={cn(
-                  "relative flex h-11 w-11 items-center justify-center rounded-md transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground",
-                  activeSidebarView === id
-                    ? "text-foreground before:absolute before:left-0 before:h-6 before:w-0.5 before:rounded-r before:bg-primary"
-                    : "text-muted-foreground/60",
+                  "relative flex h-11 w-11 items-center justify-center rounded-md transition-colors duration-150 ease-out",
+                  "hover:bg-accent/80 hover:text-accent-foreground",
+                  "text-muted-foreground/60",
                 )}
               >
                 <Icon size={22} strokeWidth={1.5} />

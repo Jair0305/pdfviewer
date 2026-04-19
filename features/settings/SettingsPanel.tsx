@@ -6,7 +6,11 @@ import {
   IconFolderOpen,
   IconFolderCheck,
   IconAlertCircle,
+  IconSun,
+  IconMoon,
+  IconDeviceDesktop,
 } from "@tabler/icons-react";
+import { useTheme } from "next-themes";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/state/settings.store";
@@ -139,6 +143,8 @@ export function SettingsPanel() {
 
   const limitExceeded = dailyLimitEnabled && totalDailyTime >= dailyLimitMinutes * 60;
 
+  const { theme, setTheme } = useTheme();
+
   const inElectron = useIsElectron();
 
   const pick = async (setter: (p: string) => void) => {
@@ -160,6 +166,39 @@ export function SettingsPanel() {
       <Separator className="shrink-0" />
 
       <div className="flex-1 space-y-7 overflow-y-auto p-3 pb-8">
+
+        {/* --- Apariencia --- */}
+        <section className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+            Apariencia
+          </p>
+          <div className="flex gap-1.5">
+            {([
+              { value: "light",  icon: IconSun,           label: "Claro"    },
+              { value: "dark",   icon: IconMoon,          label: "Oscuro"   },
+              { value: "system", icon: IconDeviceDesktop, label: "Sistema"  },
+            ] as const).map(({ value, icon: Icon, label }) => (
+              <button
+                key={value}
+                onClick={() => setTheme(value)}
+                className={cn(
+                  "flex flex-1 flex-col items-center gap-1 rounded-md border py-2 text-[10px] font-medium transition-colors",
+                  theme === value
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                )}
+                title={`${label} (atajo: D)`}
+              >
+                <Icon size={14} />
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground/50">Atajo: presiona D en cualquier momento.</p>
+        </section>
+
+        <Separator />
+
         {/* --- Folder Section --- */}
         <div className="space-y-5">
           <FolderSetting

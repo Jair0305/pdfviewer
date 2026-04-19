@@ -88,7 +88,7 @@ export function PdfMinimap({
 
   return (
     <div
-      className="relative flex w-4 shrink-0 flex-col border-l border-border/40 bg-muted/5 select-none transition-all duration-300 hover:w-8 group/minimap"
+      className="relative flex w-4 shrink-0 flex-col border-l border-border/40 bg-muted/5 select-none transition-all duration-300 hover:w-8 group/minimap shadow-[-2px_0_12px_rgba(0,0,0,0.02)] dark:shadow-none"
       onClick={handleMinimapClick}
     >
       <div className="absolute inset-0 overflow-hidden py-4">

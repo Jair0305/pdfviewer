@@ -1379,7 +1379,7 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
                         key={pageNum}
                         ref={makePageRef(pageNum)}
                         data-page={pageNum}
-                        className="group/page relative shadow-md border ring-1 ring-black/5 dark:ring-white/5 overflow-hidden"
+                        className="group/page relative shadow-[0_4px_24px_0_rgba(0,0,0,0.1)] dark:shadow-[0_4px_24px_0_rgba(0,0,0,0.4),0_0_0_1px_rgba(255,255,255,0.04)] border border-border/10 overflow-hidden"
                         style={{ width: pageW, height: pageH }}
                         onMouseUp={isInWindow ? (e) => handlePageMouseUp(e, pageNum) : undefined}
                       >
@@ -1421,10 +1421,10 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
                             {relativeFilePath && annotationMode !== "pen" && annotationMode !== "erase" && (
                               <button
                                 className={cn(
-                                  "absolute top-1 left-1 z-30 rounded p-0.5 transition-all",
+                                  "absolute top-2 z-30 rounded p-0.5 transition-all duration-300 ease-out",
                                   isBookmarked
-                                    ? "text-amber-500 opacity-100"
-                                    : "text-muted-foreground/40 opacity-0 group-hover/page:opacity-100 hover:text-amber-400",
+                                    ? "left-2 text-amber-500 opacity-100"
+                                    : "-left-8 text-muted-foreground/40 opacity-0 group-hover/page:left-2 group-hover/page:opacity-100 hover:text-amber-400",
                                 )}
                                 title={isBookmarked ? "Quitar marcador" : "Marcar página"}
                                 onClick={(e) => {

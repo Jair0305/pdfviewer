@@ -9,6 +9,7 @@ import { Breadcrumbs } from "./Breadcrumbs";
 import { FileExplorer } from "@/features/file-explorer/FileExplorer";
 import { SearchPanel } from "@/features/search/SearchPanel";
 import { SettingsPanel } from "@/features/settings/SettingsPanel";
+import { SettingsModal } from "@/features/settings/SettingsModal";
 import { RightPanel } from "./RightPanel";
 import { PdfToolbar } from "./PdfToolbar";
 import { HealthMonitor } from "./HealthMonitor";
@@ -96,7 +97,7 @@ function ResizeHandle({ className }: { className?: string }) {
 // ─── Workbench ────────────────────────────────────────────────────────────────
 
 export function WorkbenchLayout() {
-  const { activeSidebarView, setSidebarView, splitFile, setSplitFile } = useWorkbenchStore();
+  const { activeSidebarView, setSidebarView, splitFile, setSplitFile, settingsOpen, setSettingsOpen } = useWorkbenchStore();
   const { activeTab, restoreTabs }  = useEditorStore();
   const {
     indexStatus, setIndexStatus, root,
@@ -307,16 +308,22 @@ export function WorkbenchLayout() {
   }, []);
 
   return (
-    <div 
-      className={cn(
-        "flex h-screen flex-col overflow-hidden bg-background transition-colors duration-1000",
-      )}
-      style={{
-        background: tintStyle,
-        filter: readingMode ? "sepia(0.4) brightness(0.9) contrast(1.05)" : undefined,
-        transition: "filter 0.6s ease",
-      }}
+    <div
+      className="flex h-screen flex-col overflow-hidden bg-background transition-colors duration-1000"
+      style={{ background: tintStyle }}
     >
+      {/* Reading mode overlay — fixed so it covers portals (popovers, tooltips) too */}
+      {readingMode && (
+        <div
+          className="pointer-events-none fixed inset-0"
+          style={{
+            zIndex: 99998,
+            background: "rgba(255, 160, 30, 0.10)",
+            transition: "opacity 0.6s ease",
+          }}
+        />
+      )}
+
       <HealthMonitor />
 
       {showIntro && (
@@ -367,7 +374,6 @@ export function WorkbenchLayout() {
                 <div key={sidebarKey} className="flex h-full w-full flex-col overflow-hidden bg-muted/10">
                   {activeSidebarView === "explorer" && <FileExplorer />}
                   {activeSidebarView === "search"   && <SearchPanel />}
-                  {activeSidebarView === "settings" && <SettingsPanel />}
                 </div>
               </Panel>
               <ResizeHandle />
@@ -454,6 +460,8 @@ export function WorkbenchLayout() {
           )}
         </footer>
       )}
+
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }
