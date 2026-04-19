@@ -36,6 +36,8 @@ export const IPC = {
   PDF_EXTRACT_TEXT:    "pdf:extract-text",
   // Shell utilities
   SHELL_SHOW_FILE:     "shell:show-item",
+  // Window
+  SET_ZOOM:            "window:set-zoom",
   // Revision — generic step I/O (no new channels needed when adding future steps)
   REVISION_INIT:       "revision:init",
   REVISION_SAVE_META:  "revision:save-meta",

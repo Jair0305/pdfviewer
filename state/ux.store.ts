@@ -32,6 +32,7 @@ interface UXSettings {
   readingMode: boolean;
   usageHistory: UsageHistory;
   restoreSession: boolean;
+  zoomFactor: number;
 }
 
 const DEFAULT_SETTINGS: UXSettings = {
@@ -55,6 +56,7 @@ const DEFAULT_SETTINGS: UXSettings = {
   eyePulse: true,
   readingMode: false,
   restoreSession: false,
+  zoomFactor: 1.15,
   usageHistory: { firstUse: new Date().toISOString(), daily: {} },
 };
 
@@ -113,6 +115,7 @@ interface UXState extends UXSettings {
   unlockSession: () => void;
   setUsageHistory: (h: UsageHistory) => void;
   setRestoreSession: (val: boolean) => void;
+  setZoomFactor: (val: number) => void;
 }
 
 export const useUXStore = create<UXState>((set, get) => ({
@@ -187,7 +190,8 @@ export const useUXStore = create<UXState>((set, get) => ({
     persist({ ...get(), dailyLimitMinutes: val });
   },
   addTime: (seconds) => {
-    const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    // en-CA locale produces YYYY-MM-DD in the user's LOCAL timezone (not UTC)
+    const today = new Date().toLocaleDateString("en-CA");
     const prev = get();
     const next = prev.totalDailyTime + seconds;
     const dailyPrev = prev.usageHistory.daily[today] ?? 0;
@@ -216,5 +220,10 @@ export const useUXStore = create<UXState>((set, get) => ({
   setRestoreSession: (val) => {
     set({ restoreSession: val });
     persist({ ...get(), restoreSession: val });
+  },
+  setZoomFactor: (val) => {
+    const clamped = Math.min(Math.max(val, 0.5), 2.0);
+    set({ zoomFactor: clamped });
+    persist({ ...get(), zoomFactor: clamped });
   },
 }));

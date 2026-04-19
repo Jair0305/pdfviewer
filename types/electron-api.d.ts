@@ -94,6 +94,7 @@ export interface ElectronAPI {
 
   // Shell utilities
   showInFolder(filePath: string): Promise<void>;
+  setZoom(factor: number): Promise<void>;
 
   // Revision — generic step I/O
   revision: {

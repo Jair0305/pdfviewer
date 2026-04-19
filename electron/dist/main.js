@@ -264,6 +264,8 @@ var IPC = {
   PDF_EXTRACT_TEXT: "pdf:extract-text",
   // Shell utilities
   SHELL_SHOW_FILE: "shell:show-item",
+  // Window
+  SET_ZOOM: "window:set-zoom",
   // Revision — generic step I/O (no new channels needed when adding future steps)
   REVISION_INIT: "revision:init",
   REVISION_SAVE_META: "revision:save-meta",
@@ -698,6 +700,10 @@ function registerHandlers() {
   });
   ipcMain.handle(IPC.SHELL_SHOW_FILE, (_e, filePath) => {
     shell.showItemInFolder(filePath);
+  });
+  ipcMain.handle(IPC.SET_ZOOM, (e, factor) => {
+    const clamped = Math.min(Math.max(factor, 0.5), 2);
+    e.sender.setZoomFactor(clamped);
   });
   ipcMain.handle(
     IPC.REVISION_INIT,

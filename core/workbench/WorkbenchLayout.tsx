@@ -115,7 +115,7 @@ export function WorkbenchLayout() {
   const { loadSintesis, unloadSintesis }       = useSintesisStore();
   const { loadBookmarks, unloadBookmarks }     = useBookmarksStore();
   const { clientesFolder, revisionesFolder } = useSettingsStore();
-  const { contextTinting, zenMode, readingMode, setReadingMode, autoReadingMode, readingModeStartHour } = useUXStore();
+  const { contextTinting, zenMode, readingMode, setReadingMode, autoReadingMode, readingModeStartHour, zoomFactor } = useUXStore();
   const { revisionPath, meta } = useRevisionStore();
   const inElectron = useIsElectron();
 
@@ -314,6 +314,13 @@ export function WorkbenchLayout() {
     const timer = setTimeout(() => setShowIntro(false), 2000);
     return () => clearTimeout(timer);
   }, []);
+
+  // Apply zoom factor via IPC whenever it changes (also on first mount)
+  useEffect(() => {
+    if (inElectron && window.api?.setZoom) {
+      window.api.setZoom(zoomFactor);
+    }
+  }, [zoomFactor, inElectron]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

@@ -92,6 +92,10 @@ contextBridge.exposeInMainWorld("api", {
   showInFolder: (filePath: string): Promise<void> =>
     ipcRenderer.invoke(IPC.SHELL_SHOW_FILE, filePath),
 
+  // ── Window ─────────────────────────────────────────────────────────────────
+  setZoom: (factor: number): Promise<void> =>
+    ipcRenderer.invoke(IPC.SET_ZOOM, factor),
+
   // ── Revision ───────────────────────────────────────────────────────────────
   revision: {
     init: (expedientePath: string, clientesFolder: string | null, revisionesFolder: string): Promise<unknown> =>

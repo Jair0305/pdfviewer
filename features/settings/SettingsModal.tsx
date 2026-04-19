@@ -31,8 +31,11 @@ function formatDuration(seconds: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
+// en-CA locale → YYYY-MM-DD in the user's LOCAL timezone (not UTC)
+function localDate(d = new Date()): string { return d.toLocaleDateString("en-CA"); }
+
 function getStats(history: { firstUse: string; daily: Record<string, number> }) {
-  const today   = new Date().toISOString().slice(0, 10);
+  const today   = localDate();
   const entries = Object.entries(history.daily);
   const totalSeconds     = entries.reduce((sum, [, s]) => sum + s, 0);
   const daysWithActivity = entries.filter(([, s]) => s > 0).length;
@@ -41,7 +44,7 @@ function getStats(history: { firstUse: string; daily: Record<string, number> }) 
   const now = new Date(), dow = now.getDay();
   const weekStart = new Date(now);
   weekStart.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
-  const weekStartStr = weekStart.toISOString().slice(0, 10);
+  const weekStartStr = localDate(weekStart);
   const weekSeconds  = entries.filter(([d]) => d >= weekStartStr).reduce((sum, [, s]) => sum + s, 0);
   const monthStr     = today.slice(0, 7);
   const monthSeconds = entries.filter(([d]) => d.startsWith(monthStr)).reduce((sum, [, s]) => sum + s, 0);
@@ -57,12 +60,12 @@ function getStats(history: { firstUse: string; daily: Record<string, number> }) 
   const checkDate = new Date();
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const ds = checkDate.toISOString().slice(0, 10);
+    const ds = localDate(checkDate);
     if (history.daily[ds] && history.daily[ds] > 0) { streak++; checkDate.setDate(checkDate.getDate() - 1); } else break;
   }
 
   const last7: { date: string; seconds: number }[] = [];
-  for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); const ds = d.toISOString().slice(0, 10); last7.push({ date: ds, seconds: history.daily[ds] ?? 0 }); }
+  for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); const ds = localDate(d); last7.push({ date: ds, seconds: history.daily[ds] ?? 0 }); }
   const maxLast7 = Math.max(...last7.map((d) => d.seconds), 1);
 
   return { totalSeconds, daysWithActivity, dailyAvg, weekSeconds, monthSeconds, bestEntry, bestDow: DOW_NAMES[bestDow] ?? "—", streak, last7, maxLast7, today };
@@ -304,9 +307,19 @@ const SCIENCE: Record<string, ScienceInfo> = {
 
 // ─── Section content ──────────────────────────────────────────────────────────
 
+const ZOOM_LEVELS = [
+  { value: 0.85, label: "85%" },
+  { value: 0.9,  label: "90%" },
+  { value: 1.0,  label: "100%" },
+  { value: 1.1,  label: "110%" },
+  { value: 1.15, label: "115%" },
+  { value: 1.25, label: "125%" },
+  { value: 1.35, label: "135%" },
+];
+
 function AparienciaContent() {
   const { theme, setTheme } = useTheme();
-  const { restoreSession, setRestoreSession } = useUXStore();
+  const { restoreSession, setRestoreSession, zoomFactor, setZoomFactor } = useUXStore();
   const THEMES = [
     { value: "light",  icon: IconSun,          label: "Claro",   preview: "bg-white border border-zinc-200"  },
     { value: "dark",   icon: IconMoon,          label: "Oscuro",  preview: "bg-zinc-900 border border-zinc-700" },
@@ -335,6 +348,32 @@ function AparienciaContent() {
         ))}
       </div>
       <p className="mt-4 text-xs text-muted-foreground/50">Atajo rápido: tecla D en cualquier momento.</p>
+
+      {/* Zoom / density */}
+      <div className="mt-6 pt-6 border-t border-border/40 space-y-3">
+        <div>
+          <p className="text-sm font-medium">Tamaño de la interfaz</p>
+          <p className="text-xs text-muted-foreground/60 mt-0.5">Escala de todos los elementos: texto, iconos y espaciado.</p>
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {ZOOM_LEVELS.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => setZoomFactor(value)}
+              className={cn(
+                "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all",
+                Math.abs(zoomFactor - value) < 0.01
+                  ? "border-primary/40 bg-primary/10 text-primary shadow-sm"
+                  : "border-border text-muted-foreground hover:border-primary/30 hover:text-foreground",
+              )}
+            >
+              {label}
+              {value === 1.15 && <span className="ml-1 text-[9px] opacity-50">por defecto</span>}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground/40">El cambio se aplica inmediatamente. Requiere Electron.</p>
+      </div>
 
       {/* Session restore */}
       <div className="mt-6 pt-6 border-t border-border/40">

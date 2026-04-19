@@ -259,6 +259,11 @@ function registerHandlers() {
     shell.showItemInFolder(filePath);
   });
 
+  ipcMain.handle(IPC.SET_ZOOM, (e, factor: number) => {
+    const clamped = Math.min(Math.max(factor, 0.5), 2.0);
+    e.sender.setZoomFactor(clamped);
+  });
+
   // ── Revision ─────────────────────────────────────────────────────────────────
   ipcMain.handle(
     IPC.REVISION_INIT,

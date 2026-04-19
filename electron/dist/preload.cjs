@@ -38,6 +38,8 @@ var IPC = {
   PDF_EXTRACT_TEXT: "pdf:extract-text",
   // Shell utilities
   SHELL_SHOW_FILE: "shell:show-item",
+  // Window
+  SET_ZOOM: "window:set-zoom",
   // Revision — generic step I/O (no new channels needed when adding future steps)
   REVISION_INIT: "revision:init",
   REVISION_SAVE_META: "revision:save-meta",
@@ -85,6 +87,8 @@ import_electron.contextBridge.exposeInMainWorld("api", {
   extractPdfText: (filePath) => import_electron.ipcRenderer.invoke(IPC.PDF_EXTRACT_TEXT, filePath),
   // ── Shell utilities ────────────────────────────────────────────────────────
   showInFolder: (filePath) => import_electron.ipcRenderer.invoke(IPC.SHELL_SHOW_FILE, filePath),
+  // ── Window ─────────────────────────────────────────────────────────────────
+  setZoom: (factor) => import_electron.ipcRenderer.invoke(IPC.SET_ZOOM, factor),
   // ── Revision ───────────────────────────────────────────────────────────────
   revision: {
     init: (expedientePath, clientesFolder, revisionesFolder) => import_electron.ipcRenderer.invoke(IPC.REVISION_INIT, expedientePath, clientesFolder, revisionesFolder),
