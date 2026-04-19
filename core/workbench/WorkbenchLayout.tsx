@@ -28,6 +28,8 @@ import { useUXStore } from "@/state/ux.store";
 import { QUESTIONNAIRE_TEMPLATE } from "@/config/questionnaire";
 import { useIsElectron } from "@/hooks/useIsElectron";
 import { cn } from "@/lib/utils";
+import { pushRecent } from "@/features/home/recents";
+import { ShortcutsModal } from "@/features/shortcuts/ShortcutsModal";
 
 import { IconFocusCentered } from "@tabler/icons-react";
 import type { Tab } from "@/types/expediente";
@@ -97,7 +99,7 @@ function ResizeHandle({ className }: { className?: string }) {
 // ─── Workbench ────────────────────────────────────────────────────────────────
 
 export function WorkbenchLayout() {
-  const { activeSidebarView, setSidebarView, splitFile, setSplitFile, settingsOpen, setSettingsOpen } = useWorkbenchStore();
+  const { activeSidebarView, setSidebarView, splitFile, setSplitFile, settingsOpen, setSettingsOpen, shortcutsOpen, setShortcutsOpen } = useWorkbenchStore();
   const { activeTab, restoreTabs }  = useEditorStore();
   const {
     indexStatus, setIndexStatus, root,
@@ -164,11 +166,15 @@ export function WorkbenchLayout() {
     const session = loadSession();
     if (!session) return;
 
-    if (session.tabs.length > 0) {
-      restoreTabs(session.tabs, session.activeTabId);
-    }
-    if (session.rootPath) {
-      openDirectoryByPath(session.rootPath, session.expandedPaths);
+    const restoreSession = useUXStore.getState().restoreSession;
+
+    if (restoreSession) {
+      if (session.tabs.length > 0) {
+        restoreTabs(session.tabs, session.activeTabId);
+      }
+      if (session.rootPath) {
+        openDirectoryByPath(session.rootPath, session.expandedPaths);
+      }
     }
 
     if (session.activeSidebarView) {
@@ -224,6 +230,7 @@ export function WorkbenchLayout() {
     if (!inElectron) return;
     if (root?.path) {
       loadRevision(root.path);
+      pushRecent(root.path, root.name);
     } else {
       unloadRevision();
       unloadAnotaciones();
@@ -305,6 +312,17 @@ export function WorkbenchLayout() {
   useEffect(() => {
     const timer = setTimeout(() => setShowIntro(false), 2000);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable;
+      if (isTyping || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "?") { e.preventDefault(); setShortcutsOpen(!useWorkbenchStore.getState().shortcutsOpen); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, []);
 
   return (
@@ -461,7 +479,8 @@ export function WorkbenchLayout() {
         </footer>
       )}
 
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen   && <SettingsModal   onClose={() => setSettingsOpen(false)} />}
+      {shortcutsOpen  && <ShortcutsModal  onClose={() => setShortcutsOpen(false)} />}
     </div>
   );
 }

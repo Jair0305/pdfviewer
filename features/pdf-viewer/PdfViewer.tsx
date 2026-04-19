@@ -54,6 +54,8 @@ import { AnnotationOverlay, toCanonicalRect, toRotatedRect } from "@/features/an
 import { DocStatusButton } from "@/features/pdf-viewer/DocStatusButton";
 import { PdfMinimap } from "@/features/pdf-viewer/PdfMinimap";
 import { ExpedienteDashboard } from "@/features/expediente/ExpedienteDashboard";
+import { HomeScreen } from "@/features/home/HomeScreen";
+import { XmlViewer } from "@/features/xml-viewer/XmlViewer";
 import { cn } from "@/lib/utils";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -1088,14 +1090,10 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
 
   if (!file) {
     if (root) return <ExpedienteDashboard />;
-    return (
-      <EmptyState
-        icon={<IconFileAlert size={44} strokeWidth={1} className="opacity-30" />}
-        message="Selecciona un archivo PDF"
-        sub="Haz clic en un PDF del explorador"
-      />
-    );
+    return <HomeScreen />;
   }
+
+  if (file.type === "xml") return <XmlViewer file={file} />;
 
   if (file.type !== "pdf") {
     return (

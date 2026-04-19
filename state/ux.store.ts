@@ -31,6 +31,7 @@ interface UXSettings {
   eyePulse: boolean;
   readingMode: boolean;
   usageHistory: UsageHistory;
+  restoreSession: boolean;
 }
 
 const DEFAULT_SETTINGS: UXSettings = {
@@ -53,6 +54,7 @@ const DEFAULT_SETTINGS: UXSettings = {
   ambientSound: 'none',
   eyePulse: true,
   readingMode: false,
+  restoreSession: false,
   usageHistory: { firstUse: new Date().toISOString(), daily: {} },
 };
 
@@ -110,6 +112,7 @@ interface UXState extends UXSettings {
   /** Unlock for today: resets the accumulated daily time to 0 */
   unlockSession: () => void;
   setUsageHistory: (h: UsageHistory) => void;
+  setRestoreSession: (val: boolean) => void;
 }
 
 export const useUXStore = create<UXState>((set, get) => ({
@@ -209,5 +212,9 @@ export const useUXStore = create<UXState>((set, get) => ({
   setUsageHistory: (h) => {
     set({ usageHistory: h });
     persistUsageHistory(h);
+  },
+  setRestoreSession: (val) => {
+    set({ restoreSession: val });
+    persist({ ...get(), restoreSession: val });
   },
 }));

@@ -108,6 +108,8 @@ interface ExplorerState {
   openDirectory: () => Promise<void>;
   /** Open a directory by path without showing a dialog. Used to restore session. */
   openDirectoryByPath: (dirPath: string, savedExpandedPaths?: string[]) => Promise<void>;
+  /** Close the current expediente — resets root and clears all tabs. */
+  closeDirectory: () => void;
   loadChildren: (node: FileNode) => Promise<void>;
   toggleExpanded: (node: FileNode) => void;
   /** Full re-read from disk for a directory. Use as fallback/recovery only. */
@@ -211,6 +213,14 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     } catch (err) {
       console.error("[FS ERROR] openDirectoryByPath:", err);
     }
+  },
+
+  closeDirectory: () => {
+    set({ root: null, expandedPaths: new Set(), loadingPaths: new Set(), indexStatus: { state: "idle", total: 0, rootPath: null } });
+    // Close all editor tabs via dynamic import to avoid circular deps
+    import("./editor.store").then(({ useEditorStore }) => {
+      useEditorStore.getState().closeAllTabs();
+    });
   },
 
   loadChildren: async (node: FileNode) => {

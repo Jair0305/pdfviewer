@@ -1,6 +1,6 @@
 "use client";
 
-import { IconFiles, IconSearch, IconSettings2, IconLoader2, IconFolderOpen } from "@tabler/icons-react";
+import { IconFiles, IconSearch, IconSettings2, IconLoader2, IconFolderOpen, IconKeyboard } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { useWorkbenchStore, type SidebarView } from "@/state/workbench.store";
 import { useExplorerStore } from "@/state/explorer.store";
@@ -27,7 +27,7 @@ const BOTTOM_ITEMS: ActivityBarItem[] = [
 ];
 
 export function ActivityBar() {
-  const { activeSidebarView, toggleSidebarView, setSettingsOpen } = useWorkbenchStore();
+  const { activeSidebarView, toggleSidebarView, setSettingsOpen, setShortcutsOpen } = useWorkbenchStore();
   const { indexStatus } = useExplorerStore();
 
   return (
@@ -57,6 +57,21 @@ export function ActivityBar() {
 
         {/* Spacer */}
         <div className="flex-1" />
+
+        {/* Shortcuts button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => setShortcutsOpen(true)}
+              className="relative flex h-11 w-11 items-center justify-center rounded-md transition-colors duration-150 ease-out hover:bg-accent/80 hover:text-accent-foreground text-muted-foreground/60"
+            >
+              <IconKeyboard size={20} strokeWidth={1.5} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="text-xs">
+            Atajos de teclado (?)
+          </TooltipContent>
+        </Tooltip>
 
         {/* Bottom items (settings, etc.) */}
         {BOTTOM_ITEMS.map(({ id, icon: Icon, label }) => (

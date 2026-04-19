@@ -306,6 +306,7 @@ const SCIENCE: Record<string, ScienceInfo> = {
 
 function AparienciaContent() {
   const { theme, setTheme } = useTheme();
+  const { restoreSession, setRestoreSession } = useUXStore();
   const THEMES = [
     { value: "light",  icon: IconSun,          label: "Claro",   preview: "bg-white border border-zinc-200"  },
     { value: "dark",   icon: IconMoon,          label: "Oscuro",  preview: "bg-zinc-900 border border-zinc-700" },
@@ -334,6 +335,16 @@ function AparienciaContent() {
         ))}
       </div>
       <p className="mt-4 text-xs text-muted-foreground/50">Atajo rápido: tecla D en cualquier momento.</p>
+
+      {/* Session restore */}
+      <div className="mt-6 pt-6 border-t border-border/40">
+        <SettingRow
+          label="Mantener sesión activa"
+          description="Al reabrir la app, restaura automáticamente el último expediente y archivos abiertos. Si está desactivado, siempre comienza desde la pantalla de inicio."
+          checked={restoreSession}
+          onChange={setRestoreSession}
+        />
+      </div>
     </div>
   );
 }
