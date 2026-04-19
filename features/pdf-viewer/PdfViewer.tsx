@@ -32,6 +32,8 @@ import {
   IconLayoutColumns,
   IconLink,
   IconLinkOff,
+  IconBookmark,
+  IconBookmarkFilled,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -45,6 +47,7 @@ import { useRevisionStore } from "@/state/revision.store";
 import { useAnotacionesStore } from "@/state/anotaciones.store";
 import { useCitasStore } from "@/state/citas.store";
 import { useDocStatusStore } from "@/state/docStatus.store";
+import { useBookmarksStore } from "@/state/bookmarks.store";
 import { useWorkbenchStore } from "@/state/workbench.store";
 import { useUXStore } from "@/state/ux.store";
 import { AnnotationOverlay, toCanonicalRect, toRotatedRect } from "@/features/annotations/AnnotationOverlay";
@@ -465,6 +468,8 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
 
   // Citas store (for adding quotes from text selection + backward badges)
   const { addCita, citas } = useCitasStore();
+  // Bookmarks store
+  const { bookmarks, toggleBookmark } = useBookmarksStore();
   // Doc status store — loaded flag for toolbar button
   const { isLoaded: docStatusLoaded } = useDocStatusStore();
   const { setRightPanelTab, setFocusedPane, splitFile } = useWorkbenchStore();
@@ -506,6 +511,16 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
     }
     return map;
   }, [citas, relativeFilePath]);
+
+  // Set of bookmarked page numbers for current file — O(1) lookup in render loop
+  const bookmarkedPages = useMemo(() => {
+    const set = new Set<number>();
+    if (!relativeFilePath) return set;
+    for (const bm of bookmarks) {
+      if (bm.relativeFilePath === relativeFilePath) set.add(bm.pageNumber);
+    }
+    return set;
+  }, [bookmarks, relativeFilePath]);
 
   // ── Debounce renderScale behind scale to avoid per-keystroke canvas redraws ──
   useEffect(() => {
@@ -1340,6 +1355,7 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
                     const pageAnnotations = annotationsByPage[pageNum] ?? [];
                     const pageCitas       = citasByPage[pageNum] ?? [];
                     const pageCitaCount   = pageCitas.length;
+                    const isBookmarked    = bookmarkedPages.has(pageNum);
 
                     const intrinsic    = pageIntrinsics[pageNum] ?? { w: 595, h: 842 };
                     const pageRotation = getPageRotation(pageNum);
@@ -1363,7 +1379,7 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
                         key={pageNum}
                         ref={makePageRef(pageNum)}
                         data-page={pageNum}
-                        className="relative shadow-md border ring-1 ring-black/5 dark:ring-white/5 overflow-hidden"
+                        className="group/page relative shadow-md border ring-1 ring-black/5 dark:ring-white/5 overflow-hidden"
                         style={{ width: pageW, height: pageH }}
                         onMouseUp={isInWindow ? (e) => handlePageMouseUp(e, pageNum) : undefined}
                       >
@@ -1400,6 +1416,28 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
                                 setRightPanelTab("citas");
                               }}
                             />
+
+                            {/* Bookmark toggle button — visible on hover or when bookmarked */}
+                            {relativeFilePath && annotationMode !== "pen" && annotationMode !== "erase" && (
+                              <button
+                                className={cn(
+                                  "absolute top-1 left-1 z-30 rounded p-0.5 transition-all",
+                                  isBookmarked
+                                    ? "text-amber-500 opacity-100"
+                                    : "text-muted-foreground/40 opacity-0 group-hover/page:opacity-100 hover:text-amber-400",
+                                )}
+                                title={isBookmarked ? "Quitar marcador" : "Marcar página"}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleBookmark(relativeFilePath, pageNum);
+                                  if (!isBookmarked) setRightPanelTab("bookmarks");
+                                }}
+                              >
+                                {isBookmarked
+                                  ? <IconBookmarkFilled size={14} />
+                                  : <IconBookmark size={14} />}
+                              </button>
+                            )}
 
                             {/* Citation badge */}
                             {pageCitaCount > 0 && (
@@ -1503,6 +1541,7 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
                 numPages={numPages}
                 currentPage={currentPage}
                 annotations={annotations}
+                bookmarks={bookmarks}
                 relativeFilePath={relativeFilePath}
                 mainScrollRef={mainScrollRef}
                 scrollToPage={scrollToPage}

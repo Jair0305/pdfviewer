@@ -157,6 +157,7 @@ export async function init(
       { id: "citas",        status: "pendiente", updatedAt: null },
       { id: "docStatus",    status: "pendiente", updatedAt: null },
       { id: "sintesis",     status: "pendiente", updatedAt: null },
+      { id: "bookmarks",    status: "pendiente", updatedAt: null },
     ],
   };
   await fsPromises.writeFile(metaPath, JSON.stringify(meta, null, 2), "utf8");

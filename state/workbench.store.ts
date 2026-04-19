@@ -4,7 +4,7 @@ import { create } from "zustand";
 import type { FileNode } from "@/types/expediente";
 
 export type SidebarView = "explorer" | "search" | "settings";
-export type RightPanelTab = "cuestionario" | "anotaciones" | "citas" | "sintesis";
+export type RightPanelTab = "cuestionario" | "anotaciones" | "citas" | "sintesis" | "bookmarks";
 
 // ─── Pane toolbar state (reactive — PdfViewer syncs here) ─────────────────────
 

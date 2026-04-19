@@ -6,10 +6,12 @@ import { Questionnaire } from "@/features/questionnaire/Questionnaire";
 import { NotesPanel } from "@/features/annotations/NotesPanel";
 import { CitasPanel } from "@/features/citas/CitasPanel";
 import { SintesisPanel } from "@/features/sintesis/SintesisPanel";
+import { BookmarksPanel } from "@/features/bookmarks/BookmarksPanel";
 import { useWorkbenchStore } from "@/state/workbench.store";
 import { useAnotacionesStore } from "@/state/anotaciones.store";
 import { useCitasStore } from "@/state/citas.store";
 import { useSintesisStore } from "@/state/sintesis.store";
+import { useBookmarksStore } from "@/state/bookmarks.store";
 import type { Question } from "@/types/expediente";
 import { cn } from "@/lib/utils";
 
@@ -19,9 +21,10 @@ interface RightPanelProps {
 
 export function RightPanel({ questions }: RightPanelProps) {
   const { rightPanelTab, setRightPanelTab } = useWorkbenchStore();
-  const annotationCount = useAnotacionesStore((s) => s.annotations.length);
-  const citasCount      = useCitasStore((s) => s.citas.length);
-  const sintesisContent = useSintesisStore((s) => s.content);
+  const annotationCount  = useAnotacionesStore((s) => s.annotations.length);
+  const citasCount       = useCitasStore((s) => s.citas.length);
+  const sintesisContent  = useSintesisStore((s) => s.content);
+  const bookmarksCount   = useBookmarksStore((s) => s.bookmarks.length);
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
@@ -50,6 +53,12 @@ export function RightPanel({ questions }: RightPanelProps) {
           onClick={() => setRightPanelTab("sintesis")}
           dot={sintesisContent.trim().length > 0}
         />
+        <TabButton
+          label="Marcadores"
+          active={rightPanelTab === "bookmarks"}
+          onClick={() => setRightPanelTab("bookmarks")}
+          badge={bookmarksCount > 0 ? String(bookmarksCount > 99 ? "99+" : bookmarksCount) : undefined}
+        />
       </div>
 
       <Separator className="shrink-0" />
@@ -60,6 +69,7 @@ export function RightPanel({ questions }: RightPanelProps) {
         {rightPanelTab === "anotaciones"  && <NotesPanel />}
         {rightPanelTab === "citas"        && <CitasPanel />}
         {rightPanelTab === "sintesis"     && <SintesisPanel />}
+        {rightPanelTab === "bookmarks"   && <BookmarksPanel />}
       </div>
     </div>
   );

@@ -3,14 +3,16 @@
 import React, { useEffect, useRef, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { Annotation, AnnotationColor } from "@/types/anotaciones";
+import type { Bookmark } from "@/types/bookmarks";
 
 interface PdfMinimapProps {
-  numPages: number;
-  currentPage: number;
-  annotations: Annotation[];
+  numPages:         number;
+  currentPage:      number;
+  annotations:      Annotation[];
+  bookmarks:        Bookmark[];
   relativeFilePath: string | null;
-  mainScrollRef: React.RefObject<HTMLDivElement | null>;
-  scrollToPage: (pageNum: number) => void;
+  mainScrollRef:    React.RefObject<HTMLDivElement | null>;
+  scrollToPage:     (pageNum: number) => void;
 }
 
 const COLOR_MAP: Record<AnnotationColor, string> = {
@@ -24,13 +26,14 @@ export function PdfMinimap({
   numPages,
   currentPage,
   annotations,
+  bookmarks,
   relativeFilePath,
   mainScrollRef,
   scrollToPage,
 }: PdfMinimapProps) {
   const indicatorRef = useRef<HTMLDivElement>(null);
 
-  // Bucket annotations by page — O(annotations) once instead of O(annotations × pages) in render
+  // Bucket annotations by page — O(annotations) once
   const annotsByPage = useMemo(() => {
     const map: Record<number, Annotation[]> = {};
     if (!relativeFilePath) return map;
@@ -41,6 +44,16 @@ export function PdfMinimap({
     }
     return map;
   }, [annotations, relativeFilePath]);
+
+  // Set of bookmarked pages for this file — O(1) lookup
+  const bookmarkedPages = useMemo(() => {
+    const set = new Set<number>();
+    if (!relativeFilePath) return set;
+    for (const bm of bookmarks) {
+      if (bm.relativeFilePath === relativeFilePath) set.add(bm.pageNumber);
+    }
+    return set;
+  }, [bookmarks, relativeFilePath]);
 
   // Direct DOM update — no state, no re-render on every scroll event
   useEffect(() => {
@@ -79,7 +92,7 @@ export function PdfMinimap({
       onClick={handleMinimapClick}
     >
       <div className="absolute inset-0 overflow-hidden py-4">
-        {/* Viewport indicator — positioned via direct DOM, no re-render on scroll */}
+        {/* Viewport indicator — positioned via direct DOM */}
         <div
           ref={indicatorRef}
           className="absolute left-0 right-0 z-20 border-y border-primary/20 bg-primary/5 backdrop-blur-[1px] pointer-events-none"
@@ -87,8 +100,9 @@ export function PdfMinimap({
         />
 
         {Array.from({ length: numPages }).map((_, i) => {
-          const pageNum  = i + 1;
-          const pageAnns = annotsByPage[pageNum] ?? [];
+          const pageNum    = i + 1;
+          const pageAnns   = annotsByPage[pageNum] ?? [];
+          const isBookmark = bookmarkedPages.has(pageNum);
 
           return (
             <div
@@ -98,8 +112,14 @@ export function PdfMinimap({
                 currentPage === pageNum ? "bg-primary/5" : "bg-transparent",
               )}
               style={{ height: `${100 / numPages}%` }}
-              title={`Página ${pageNum}`}
+              title={`Página ${pageNum}${isBookmark ? " 🔖" : ""}`}
             >
+              {/* Bookmark flag — amber left edge */}
+              {isBookmark && (
+                <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-amber-400/80 z-10" />
+              )}
+
+              {/* Annotation dots */}
               {pageAnns.map((ann) => {
                 const topVal = ann.type === "highlight"
                   ? (ann.rects?.[0]?.y ?? 0)

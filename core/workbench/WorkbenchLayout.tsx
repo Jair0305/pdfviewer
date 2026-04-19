@@ -21,6 +21,7 @@ import { useAnotacionesStore } from "@/state/anotaciones.store";
 import { useCitasStore } from "@/state/citas.store";
 import { useDocStatusStore } from "@/state/docStatus.store";
 import { useSintesisStore } from "@/state/sintesis.store";
+import { useBookmarksStore } from "@/state/bookmarks.store";
 import { useSettingsStore } from "@/state/settings.store";
 import { useUXStore } from "@/state/ux.store";
 import { QUESTIONNAIRE_TEMPLATE } from "@/config/questionnaire";
@@ -108,6 +109,7 @@ export function WorkbenchLayout() {
   const { loadCitas, unloadCitas }             = useCitasStore();
   const { loadDocStatus, unloadDocStatus }     = useDocStatusStore();
   const { loadSintesis, unloadSintesis }       = useSintesisStore();
+  const { loadBookmarks, unloadBookmarks }     = useBookmarksStore();
   const { clientesFolder, revisionesFolder } = useSettingsStore();
   const { contextTinting, zenMode, readingMode, setReadingMode, autoReadingMode, readingModeStartHour } = useUXStore();
   const { revisionPath, meta } = useRevisionStore();
@@ -248,10 +250,12 @@ export function WorkbenchLayout() {
       loadCitas(revisionPath);
       loadDocStatus(revisionPath);
       loadSintesis(revisionPath);
+      loadBookmarks(revisionPath);
     } else {
       unloadCitas();
       unloadDocStatus();
       unloadSintesis();
+      unloadBookmarks();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revisionPath, inElectron]);

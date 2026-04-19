@@ -9,6 +9,7 @@ export type StepId =
   | "citas"
   | "docStatus"
   | "sintesis"
+  | "bookmarks"
   | "dictamen";
 
 export interface RevisionStepState {

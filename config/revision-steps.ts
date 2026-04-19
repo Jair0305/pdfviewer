@@ -15,6 +15,7 @@ export const REVISION_STEPS = [
   { id: "citas"        as const, title: "Citas"         },
   { id: "docStatus"    as const, title: "Estado Docs"   },
   { id: "sintesis"     as const, title: "Síntesis"      },
+  { id: "bookmarks"   as const, title: "Marcadores"    },
   // Future steps — uncomment when requirements are defined:
   // { id: "dictamen" as const, title: "Dictamen" },
 ] as const;
