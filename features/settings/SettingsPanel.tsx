@@ -98,6 +98,32 @@ function FolderSetting({
   );
 }
 
+// ─── Toggle ───────────────────────────────────────────────────────────────────
+
+function Toggle({ checked, onChange, color = "primary" }: {
+  checked: boolean; onChange: (v: boolean) => void; color?: "primary" | "amber" | "red";
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      role="switch"
+      aria-checked={checked}
+      className={cn(
+        "relative shrink-0 h-6 w-11 rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 shadow-inner",
+        checked
+          ? color === "amber" ? "bg-amber-500" : color === "red" ? "bg-red-500" : "bg-primary"
+          : "bg-muted-foreground/30 dark:bg-muted-foreground/20",
+      )}
+    >
+      <span className={cn(
+        "absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200",
+        checked ? "translate-x-5" : "translate-x-0",
+      )} />
+    </button>
+  );
+}
+
 // ─── Panel ────────────────────────────────────────────────────────────────────
 
 export function SettingsPanel() {
@@ -239,14 +265,9 @@ export function SettingsPanel() {
                 <p className="text-[11px] font-medium text-foreground">Privacy Focus</p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">Desenfoque automático al cambiar de ventana para evitar distracciones.</p>
               </div>
-              <Button 
-                variant={privacyBlur ? "default" : "outline"} 
-                size="sm" 
-                className={cn("h-6 w-10 shrink-0 px-0 transition-all", privacyBlur && "bg-primary text-primary-foreground")}
-                onClick={() => setPrivacyBlur(!privacyBlur)}
-              >
-                <span className="text-[9px] font-bold">{privacyBlur ? "ON" : "OFF"}</span>
-              </Button>
+              <div className="mt-0.5">
+                <Toggle checked={privacyBlur} onChange={setPrivacyBlur} />
+              </div>
             </div>
 
             {/* Foveal Focus */}
@@ -255,14 +276,9 @@ export function SettingsPanel() {
                 <p className="text-[11px] font-medium text-foreground">Foveal Focus</p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">Atenúa sutilmente los archivos vecinos en el explorador.</p>
               </div>
-              <Button 
-                variant={fovealFocus ? "default" : "outline"} 
-                size="sm" 
-                className={cn("h-6 w-10 shrink-0 px-0 transition-all", fovealFocus && "bg-primary text-primary-foreground")}
-                onClick={() => setFovealFocus(!fovealFocus)}
-              >
-                <span className="text-[9px] font-bold">{fovealFocus ? "ON" : "OFF"}</span>
-              </Button>
+              <div className="mt-0.5">
+                <Toggle checked={fovealFocus} onChange={setFovealFocus} />
+              </div>
             </div>
 
             <Separator className="opacity-50" />
@@ -274,14 +290,9 @@ export function SettingsPanel() {
                   <p className="text-[11px] font-medium text-foreground">Modo Lectura Automático</p>
                   <p className="text-[10px] text-muted-foreground leading-relaxed">Filtro de descanso visual basado en la hora local (24h).</p>
                 </div>
-                <Button 
-                  variant={autoReadingMode ? "default" : "outline"} 
-                  size="sm" 
-                  className={cn("h-6 w-12 shrink-0 px-0 transition-all", autoReadingMode && "bg-amber-500 hover:bg-amber-600 text-white")}
-                  onClick={() => setAutoReadingMode(!autoReadingMode)}
-                >
-                  <span className="text-[9px] font-bold">{autoReadingMode ? "AUTO" : "MANUAL"}</span>
-                </Button>
+                <div className="mt-0.5">
+                  <Toggle checked={autoReadingMode} onChange={setAutoReadingMode} color="amber" />
+                </div>
               </div>
 
               {autoReadingMode && (
@@ -309,14 +320,9 @@ export function SettingsPanel() {
                 <p className="text-[11px] font-medium text-foreground">Progressive Disclosure</p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">Enfoca solo la pregunta activa en el cuestionario, atenuando el resto.</p>
               </div>
-              <Button 
-                variant={progressiveDisclosure ? "default" : "outline"} 
-                size="sm" 
-                className={cn("h-6 w-10 shrink-0 px-0 transition-all", progressiveDisclosure && "bg-primary text-primary-foreground font-bold")}
-                onClick={() => setProgressiveDisclosure(!progressiveDisclosure)}
-              >
-                <span className="text-[9px] uppercase">{progressiveDisclosure ? "ON" : "OFF"}</span>
-              </Button>
+              <div className="mt-0.5">
+                <Toggle checked={progressiveDisclosure} onChange={setProgressiveDisclosure} />
+              </div>
             </div>
 
             {/* Context Tinting */}
@@ -325,14 +331,9 @@ export function SettingsPanel() {
                 <p className="text-[11px] font-medium text-foreground">Tintado de Contexto</p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">Colorea sutilmente la app según el tipo de expediente para reconocimiento rápido.</p>
               </div>
-              <Button 
-                variant={contextTinting ? "default" : "outline"} 
-                size="sm" 
-                className={cn("h-6 w-10 shrink-0 px-0 transition-all", contextTinting && "bg-primary text-primary-foreground font-bold")}
-                onClick={() => setContextTinting(!contextTinting)}
-              >
-                <span className="text-[9px] uppercase">{contextTinting ? "ON" : "OFF"}</span>
-              </Button>
+              <div className="mt-0.5">
+                <Toggle checked={contextTinting} onChange={setContextTinting} />
+              </div>
             </div>
 
             {/* Micro Audio */}
@@ -341,14 +342,9 @@ export function SettingsPanel() {
                 <p className="text-[11px] font-medium text-foreground">Micro-Audio Háptico</p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">Sonidos sutiles para confirmar interacciones (vía altavoz).</p>
               </div>
-              <Button 
-                variant={microAudio ? "default" : "outline"} 
-                size="sm" 
-                className={cn("h-6 w-10 shrink-0 px-0 transition-all", microAudio && "bg-primary text-primary-foreground font-bold")}
-                onClick={() => setMicroAudio(!microAudio)}
-              >
-                <span className="text-[9px] uppercase">{microAudio ? "ON" : "OFF"}</span>
-              </Button>
+              <div className="mt-0.5">
+                <Toggle checked={microAudio} onChange={setMicroAudio} />
+              </div>
             </div>
 
             {/* Health Reminders */}
@@ -357,14 +353,9 @@ export function SettingsPanel() {
                 <p className="text-[11px] font-medium text-foreground">Recordatorios de Salud</p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">Avisos de descanso automáticos cada 50 minutos de flujo profundo.</p>
               </div>
-              <Button 
-                variant={healthReminders ? "default" : "outline"} 
-                size="sm" 
-                className={cn("h-6 w-10 shrink-0 px-0 transition-all", healthReminders && "bg-primary text-primary-foreground font-bold")}
-                onClick={() => setHealthReminders(!healthReminders)}
-              >
-                <span className="text-[9px] uppercase">{healthReminders ? "ON" : "OFF"}</span>
-              </Button>
+              <div className="mt-0.5">
+                <Toggle checked={healthReminders} onChange={setHealthReminders} />
+              </div>
             </div>
 
             <Separator className="opacity-50" />
@@ -375,14 +366,9 @@ export function SettingsPanel() {
                 <p className="text-[11px] font-medium text-foreground">Contador de Sesión (WakaTime)</p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">Muestra el tiempo total de actividad en la barra inferior.</p>
               </div>
-              <Button 
-                variant={sessionTimer ? "default" : "outline"} 
-                size="sm" 
-                className={cn("h-6 w-10 shrink-0 px-0 transition-all", sessionTimer && "bg-primary text-primary-foreground font-bold")}
-                onClick={() => setSessionTimer(!sessionTimer)}
-              >
-                <span className="text-[9px] uppercase">{sessionTimer ? "ON" : "OFF"}</span>
-              </Button>
+              <div className="mt-0.5">
+                <Toggle checked={sessionTimer} onChange={setSessionTimer} />
+              </div>
             </div>
 
             {/* Daily Limit */}
@@ -392,14 +378,9 @@ export function SettingsPanel() {
                   <p className="text-[11px] font-medium text-foreground">Límite Diario de Uso</p>
                   <p className="text-[10px] text-muted-foreground leading-relaxed">Bloquea el acceso a la app tras alcanzar el tiempo configurado.</p>
                 </div>
-                <Button 
-                  variant={dailyLimitEnabled ? "default" : "outline"} 
-                  size="sm" 
-                  className={cn("h-6 w-10 shrink-0 px-0 transition-all", dailyLimitEnabled && "bg-red-500 hover:bg-red-600 text-white font-bold")}
-                  onClick={() => setDailyLimitEnabled(!dailyLimitEnabled)}
-                >
-                  <span className="text-[9px] uppercase">{dailyLimitEnabled ? "LOCK" : "OFF"}</span>
-                </Button>
+                <div className="mt-0.5">
+                  <Toggle checked={dailyLimitEnabled} onChange={setDailyLimitEnabled} color="red" />
+                </div>
               </div>
 
               {dailyLimitEnabled && (
@@ -457,14 +438,9 @@ export function SettingsPanel() {
                 <p className="text-[11px] font-medium text-foreground">Lectura Biónica (Bionic Fixation)</p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">Resalta el inicio de las palabras para acelerar el escaneo mental del texto.</p>
               </div>
-              <Button 
-                variant={bionicReading ? "default" : "outline"} 
-                size="sm" 
-                className={cn("h-6 w-10 shrink-0 px-0 transition-all", bionicReading && "bg-primary text-primary-foreground font-bold")}
-                onClick={() => setBionicReading(!bionicReading)}
-              >
-                <span className="text-[9px] uppercase">{bionicReading ? "ON" : "OFF"}</span>
-              </Button>
+              <div className="mt-0.5">
+                <Toggle checked={bionicReading} onChange={setBionicReading} />
+              </div>
             </div>
 
             {/* Lighthouse Mode */}
@@ -473,14 +449,9 @@ export function SettingsPanel() {
                 <p className="text-[11px] font-medium text-foreground">Modo Faro (Lighthouse)</p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">Crea una guía luminosa horizontal para no perder la línea al leer PDF.</p>
               </div>
-              <Button 
-                variant={lighthouseMode ? "default" : "outline"} 
-                size="sm" 
-                className={cn("h-6 w-10 shrink-0 px-0 transition-all", lighthouseMode && "bg-primary text-primary-foreground font-bold")}
-                onClick={() => setLighthouseMode(!lighthouseMode)}
-              >
-                <span className="text-[9px] uppercase">{lighthouseMode ? "ON" : "OFF"}</span>
-              </Button>
+              <div className="mt-0.5">
+                <Toggle checked={lighthouseMode} onChange={setLighthouseMode} />
+              </div>
             </div>
 
             {/* Eye Pulse */}
@@ -489,14 +460,9 @@ export function SettingsPanel() {
                 <p className="text-[11px] font-medium text-foreground">Pulso Ocular 20-20-20</p>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">Un indicador visual sutil cada 20 minutos para prevenir fatiga.</p>
               </div>
-              <Button 
-                variant={eyePulse ? "default" : "outline"} 
-                size="sm" 
-                className={cn("h-6 w-10 shrink-0 px-0 transition-all", eyePulse && "bg-primary text-primary-foreground font-bold")}
-                onClick={() => setEyePulse(!eyePulse)}
-              >
-                <span className="text-[9px] uppercase">{eyePulse ? "ON" : "OFF"}</span>
-              </Button>
+              <div className="mt-0.5">
+                <Toggle checked={eyePulse} onChange={setEyePulse} />
+              </div>
             </div>
 
             {/* Ambient Sound */}
