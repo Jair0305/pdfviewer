@@ -20,6 +20,7 @@ const GROUPS: ShortcutGroup[] = [
   {
     title: "General",
     items: [
+      { keys: ["Ctrl", "K"], label: "Abrir paleta de comandos" },
       { keys: ["D"],         label: "Cambiar tema claro / oscuro" },
       { keys: ["?"],         label: "Mostrar esta referencia de atajos" },
       { keys: ["Esc"],       label: "Cerrar modal / salir de modo activo" },

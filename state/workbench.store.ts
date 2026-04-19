@@ -60,6 +60,9 @@ interface WorkbenchState {
   shortcutsOpen: boolean;
   setShortcutsOpen: (open: boolean) => void;
 
+  commandPaletteOpen: boolean;
+  setCommandPaletteOpen: (open: boolean) => void;
+
   rightPanelTab: RightPanelTab;
   setRightPanelTab: (tab: RightPanelTab) => void;
 
@@ -100,6 +103,9 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
 
   shortcutsOpen: false,
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+
+  commandPaletteOpen: false,
+  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
 
   rightPanelTab:    "cuestionario",
   setRightPanelTab: (tab) => set({ rightPanelTab: tab }),

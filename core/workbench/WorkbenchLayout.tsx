@@ -30,6 +30,7 @@ import { useIsElectron } from "@/hooks/useIsElectron";
 import { cn } from "@/lib/utils";
 import { pushRecent } from "@/features/home/recents";
 import { ShortcutsModal } from "@/features/shortcuts/ShortcutsModal";
+import { CommandPalette } from "@/features/command-palette/CommandPalette";
 
 import { IconFocusCentered } from "@tabler/icons-react";
 import type { Tab } from "@/types/expediente";
@@ -99,7 +100,7 @@ function ResizeHandle({ className }: { className?: string }) {
 // ─── Workbench ────────────────────────────────────────────────────────────────
 
 export function WorkbenchLayout() {
-  const { activeSidebarView, setSidebarView, splitFile, setSplitFile, settingsOpen, setSettingsOpen, shortcutsOpen, setShortcutsOpen } = useWorkbenchStore();
+  const { activeSidebarView, setSidebarView, splitFile, setSplitFile, settingsOpen, setSettingsOpen, shortcutsOpen, setShortcutsOpen, commandPaletteOpen, setCommandPaletteOpen } = useWorkbenchStore();
   const { activeTab, restoreTabs }  = useEditorStore();
   const {
     indexStatus, setIndexStatus, root,
@@ -318,12 +319,20 @@ export function WorkbenchLayout() {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       const isTyping = tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable;
+
+      // Ctrl+K — command palette (works even while typing)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen(!useWorkbenchStore.getState().commandPaletteOpen);
+        return;
+      }
+
       if (isTyping || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === "?") { e.preventDefault(); setShortcutsOpen(!useWorkbenchStore.getState().shortcutsOpen); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [setCommandPaletteOpen, setShortcutsOpen]);
 
   return (
     <div
@@ -479,8 +488,9 @@ export function WorkbenchLayout() {
         </footer>
       )}
 
-      {settingsOpen   && <SettingsModal   onClose={() => setSettingsOpen(false)} />}
-      {shortcutsOpen  && <ShortcutsModal  onClose={() => setShortcutsOpen(false)} />}
+      {settingsOpen        && <SettingsModal    onClose={() => setSettingsOpen(false)} />}
+      {shortcutsOpen       && <ShortcutsModal   onClose={() => setShortcutsOpen(false)} />}
+      {commandPaletteOpen  && <CommandPalette   onClose={() => setCommandPaletteOpen(false)} />}
     </div>
   );
 }
