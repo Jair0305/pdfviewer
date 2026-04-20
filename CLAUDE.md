@@ -1,714 +1,183 @@
 # CLAUDE.md
 
-This file provides **comprehensive guidance** for Claude Code when working with this repository.
+Guidance for Claude Code working on this repository.
 
 ---
 
 # 🧠 Project Overview
 
-**Revisor de Expedientes**
+**Revisor de Expedientes** — desktop IDE-like application for reviewing legal case files (expedientes jurídicos).
 
-A **desktop IDE-like application** built with:
+Stack:
+- Electron (main process, Node.js)
+- Next.js + React 19 (renderer, UI)
+- Tailwind v4 + shadcn/ui + @tabler/icons-react
+- Zustand (state)
+- better-sqlite3 (indexing)
+- chokidar (watchers)
+- react-pdf / pdfjs-dist (PDF rendering)
 
-* Electron (Main process, Node.js)
-* Next.js (Renderer, UI)
-* Zustand (State management)
-* SQLite (Indexing via `better-sqlite3`)
-
----
-
-## 🎯 Purpose
-
-This application is designed for **reviewing legal case files (expedientes jurídicos)**.
-
-Each expediente consists of:
-
-* Large folder trees
-* Hundreds or thousands of `.pdf` and `.xml` files
-
-The app provides:
-
-* File explorer (like VS Code)
-* PDF viewer
-* Questionnaire panel (yes/no structured validation)
-* File indexing and search
+Each expediente has large folder trees with hundreds/thousands of PDF and XML files. The app provides file explorer, PDF viewer, annotations, questionnaire, indexing, full-text search, and a revision output (JSON files per expediente).
 
 ---
 
-# 🏗️ Core Architecture
+# 🏗️ Architecture — The Three Contexts
 
-## Process Separation (CRITICAL)
+| Context | Entry | Runtime | Notes |
+|---|---|---|---|
+| Main process | `electron/main.ts` | Node.js | Full FS access, sqlite, chokidar |
+| Preload | `electron/preload.ts` | Sandboxed | Bridge via `contextBridge` |
+| Renderer | `app/` | Browser | NO Node.js access |
 
-There are **three isolated execution contexts**:
+## 🚨 Golden Rules
 
-| Context      | Entry                 | Runtime   | Notes                      |
-| ------------ | --------------------- | --------- | -------------------------- |
-| Main Process | `electron/main.ts`    | Node.js   | Full access to filesystem  |
-| Preload      | `electron/preload.ts` | Sandboxed | Bridge via `contextBridge` |
-| Renderer     | `app/`                | Browser   | NO Node.js access          |
-
----
-
-## 🚨 Golden Rule
-
-> The renderer MUST NEVER access Node.js APIs directly.
-
-All system access goes through:
-
-```ts
-window.api
-```
+1. **Renderer MUST NEVER access Node.js APIs directly.** All system access via `window.api`.
+2. **Never create ad-hoc IPC channels.** All channels defined in `electron/ipc-channels.ts`.
+3. **Never perform FS operations in IPC handlers directly.** Use the filesystem service.
+4. **Never rebuild the entire file tree.** Only incremental updates via watcher events.
+5. **Keep business logic in stores/services, not components.**
 
 ---
 
-# 🔌 IPC (Inter-Process Communication)
-
-## Source of Truth
-
-All channels are defined in:
-
-```
-electron/ipc-channels.ts
-```
-
-👉 NEVER create ad-hoc channels.
-
----
-
-## API Exposure
-
-Defined in `preload.ts` using `contextBridge`:
-
-```ts
-window.api = {
-  openDirectory,
-  readDirectory,
-  readFile,
-  moveFile,
-  deleteFile,
-  createFile,
-  createDirectory,
-  watchDirectory
-}
-```
-
----
-
-## Communication Flow
-
-```txt
-Renderer (React)
-  ↓
-window.api
-  ↓
-Preload (contextBridge)
-  ↓
-ipcRenderer
-  ↓
-ipcMain (Electron)
-  ↓
-Main Process (fs, chokidar, sqlite)
-```
-
----
-
-# 📂 Filesystem Layer (CORE SYSTEM)
-
-## Philosophy
-
-The filesystem must behave like:
-
-👉 VS Code Explorer
-
-Meaning:
-
-* Real-time sync
-* No full reloads
-* Incremental updates
-* Robust error handling
-
----
-
-## 🔥 FileSystem Service
-
-Location:
-
-```
-electron/services/filesystem.ts
-```
-
-### Responsibilities:
-
-* ALL file operations
-* Validation
-* Error handling
-* Emitting events
-
----
-
-## Supported Operations
-
-* moveFile
-* deleteFile
-* renameFile
-* createFile
-* createDirectory
-
----
-
-## ⚠️ Rules
-
-* NEVER perform FS operations directly in IPC handlers
-* ALWAYS use filesystem service
-* ALWAYS validate paths before operations
-
----
-
-## 🔁 Move File (CRITICAL)
-
-Must follow:
-
-1. Validate source exists
-2. Normalize paths
-3. Attempt:
-
-```ts
-fs.rename(source, target)
-```
-
-4. If fails:
-
-   * fallback to:
-
-```ts
-fs.copyFile(source, target)
-fs.unlink(source)
-```
-
----
-
-## Error Handling
-
-Must handle:
-
-* ENOENT → file missing
-* EACCES → permission denied
-* EPERM → locked file (Dropbox, antivirus)
-
----
-
-# 🔄 Watchers (Real-Time Sync)
-
-## Library
-
-```
-chokidar
-```
-
----
-
-## Events to Handle
-
-* add
-* addDir
-* unlink
-* unlinkDir
-* change
-
----
-
-## IPC Events
-
-* fs:add
-* fs:addDir
-* fs:remove
-* fs:removeDir
-* fs:change
-* fs:move
-
----
-
-## 🚨 Rules
-
-* NEVER rebuild the entire tree
-* ONLY update affected nodes
-* MUST reflect external changes (Explorer, Dropbox)
-
----
-
-# 🧠 State Management (Zustand)
-
-All state lives in:
-
-```
-state/
-```
-
----
-
-## Stores Overview
-
-### 📁 explorer.store.ts
-
-Owns:
-
-* File tree (FileNode)
-* Expanded nodes
-* FS sync
-* Index status
-
----
-
-### 📄 editor.store.ts
-
-Owns:
-
-* Open tabs
-* Active file
-
-Rules:
-
-* Tab ID = file path
-* No duplicates
-
----
-
-### 🧭 workbench.store.ts
-
-Owns:
-
-* Active sidebar view
-
----
-
-### 🔍 search.store.ts
-
-Owns:
-
-* Query
-* Results
-* Indexed flag
-
----
-
-### 🧾 questionnaire.store.ts
-
-Owns:
-
-* Answers per file
-
----
-
-## Cross-store communication
-
-Use dynamic imports:
-
-```ts
-(await import("./editor.store")).useEditorStore.getState()
-```
-
----
-
-# 🧩 Workbench Layout (IDE System)
-
-## Root Component
-
-```
-core/workbench/WorkbenchLayout.tsx
-```
-
----
-
-## Layout Structure
-
-```txt
-Activity Bar
-Sidebar
-Editor Area (tabs)
-Panel (optional)
-```
-
----
-
-## Panels
-
-* Sidebar: File explorer / search
-* Editor:
-
-  * PDF Viewer
-  * Questionnaire
-
----
-
-## Resize
-
-Uses:
-
-```
-react-resizable-panels
-```
-
----
-
-## Rules
-
-* Must be fluid
-* No layout breaks
-* No hardcoded hacks
-
----
-
-# 📂 File Explorer (VS Code Behavior)
-
-## Requirements
-
-* Tree view
-* Lazy loading
-* Virtualized rendering
-* Context menu
-* Drag & drop
-
----
-
-## MUST behave like OS file explorer
-
----
-
-## Drag & Drop
-
-* Moves files using FS service
-* Updates state instantly
-* Validates destination
-
----
-
-## 🚨 Rules
-
-* No full reload
-* No mock data
-* Incremental updates only
-
----
-
-# 📄 PDF Viewer
-
-## Library
-
-* react-pdf or pdf.js
-
----
-
-## Requirements
-
-* Load real files
-* Smooth scroll
-* Resize responsive
-* Support large documents
-
----
-
-## Future
-
-* Annotations
-* Highlighting
-
----
-
-# 🔍 File Indexer
-
-## Location
-
-```
-electron/services/indexer.ts
-```
-
----
-
-## Technology
-
-```
-better-sqlite3
-```
-
----
-
-## Database
-
-Stored in:
-
-```
-userData/expediente-index.db
-```
-
----
-
-## Indexed Data
-
-* path
-* type
-* metadata
-* timestamps
-
----
-
-## Behavior
-
-* Runs asynchronously
-* Streams progress via IPC
-
----
-
-## Events
-
-* INDEX_PROGRESS
-* INDEX_COMPLETE
-
----
-
-# 🔎 Search Engine
-
-## Features
-
-* Search by filename
-* (future) full-text search
-* Grouped results
-
----
-
-## Requirements
-
-* Instant results
-* No blocking UI
-* Uses index (NOT FS scan)
-
----
-
-# 🧾 Questionnaire System
-
-## Config
-
-```
-config/questionnaire.ts
-```
-
----
-
-## Structure
-
-```ts
-QUESTIONNAIRE_TEMPLATE
-```
-
----
-
-## Behavior
-
-* Per-file answers
-* Persistent state
-* Linked to file path
+# 📚 Detailed Context (read on demand)
+
+For detailed reference on each subsystem, read the relevant file in `.claude/context/`:
+
+| Topic | File | When to read |
+|---|---|---|
+| IPC channels, preload API, communication flow | `.claude/context/ipc.md` | Adding/modifying any IPC endpoint, preload API, or message flow |
+| FileSystem service, move fallback, error codes (ENOENT/EPERM/EXDEV), watchers | `.claude/context/filesystem.md` | Touching file operations, watchers, FS error handling |
+| Indexer, SQLite schema, content (full-text) search, pdf extractor | `.claude/context/indexer.md` | Working on indexing, search, or PDF text extraction |
+| All Zustand stores, cross-store patterns, performance pitfalls | `.claude/context/state.md` | Creating/modifying stores, debugging re-renders |
+| Workbench layout, panels, PDF viewer internals (render window, canvas pen), modals, HomeScreen | `.claude/context/workbench.md` | Any layout change or PDF viewer work |
+| Revision folder structure, meta.json, generic step I/O, adding new steps | `.claude/context/revision.md` | Adding a revision step or working with persistence |
+
+Always read the relevant subdoc **before** modifying that subsystem.
 
 ---
 
 # ⚡ Performance Rules
 
-## MUST
+**MUST**: virtualization for long lists, lazy loading, memoization, incremental updates, granular store selectors.
 
-* Virtualization
-* Lazy loading
-* Memoization
-* Incremental updates
+**NEVER**: full tree re-render, blocking main thread, large synchronous loops, subscribing to full array state when a count or scalar would do.
 
 ---
 
-## NEVER
+# 🔐 Security
 
-* Full tree re-render
-* Blocking main thread
-* Large synchronous loops
+- **Renderer**: no `fs`, no `path`, no `require()` — only `window.api`
+- **Preload**: `contextBridge` with minimal exposed surface
+- **Main**: all privileged logic; validates all incoming paths and arguments
 
----
-
-# 🔐 Security Rules
-
-## Renderer
-
-❌ NO:
-
-* fs
-* path
-* require()
-
-✅ ONLY:
-
-* window.api
-
----
-
-## Preload
-
-* Use contextBridge
-* Expose minimal API
-
----
-
-## Main
-
-* All privileged logic here
-
----
-
-# 📦 Development Workflow
-
-## Commands
-
-```bash
-npm run dev
-npm run dev:next
-npm run dev:electron
-npm run build
-npm run package
-```
-
----
-
-## Important Notes
-
-* Electron must restart on main/preload changes
-* Renderer hot reload works independently
-
----
-
-# 🧠 Coding Guidelines
-
-## General
-
-* Prefer TypeScript strict typing
-* Use path aliases (@/)
-* Keep components pure
-
----
-
-## File Operations
-
-* Always validate paths
-* Always handle errors
-* Never trust frontend state
-
----
-
-## State
-
-* Keep logic in stores/services
-* Avoid logic in components
+Config: `nodeIntegration: false, contextIsolation: true, sandbox: false` (sandbox off because preload needs `require`).
 
 ---
 
 # 🚫 Forbidden Patterns
 
-* Direct fs in React
-* Mock filesystem
-* Full tree refresh
-* Uncontrolled IPC channels
-* Blocking operations in UI
+- Direct `fs`/`path`/`require` in renderer
+- Mock filesystem for "testing" the UI
+- Full tree refresh on any operation
+- Uncontrolled IPC channels (outside `ipc-channels.ts`)
+- Blocking operations in UI thread
+- Updating Zustand store on every keystroke from a text input (use local state, flush on blur)
+- `new Date().toISOString().slice(0, 10)` for local date (use `toLocaleDateString("en-CA")` — UTC rolls over prematurely in CDMX)
+
+---
+
+# 📦 Development
+
+```bash
+npm run dev             # concurrent Next.js + Electron
+npm run dev:next        # Next.js only
+npm run dev:electron    # Electron only (needs Next running)
+npm run build           # Next static export + Electron compile
+npm run package         # electron-builder → dist-app/
+npm run typecheck       # tsc --noEmit
+```
+
+- **Electron must restart on main/preload changes.** Renderer hot reloads independently.
+- `better-sqlite3` is native — rebuild with `npx @electron/rebuild -f -w better-sqlite3` if it breaks.
 
 ---
 
 # 🧪 Debugging
 
-## Logs
+Structured log prefixes: `[FS ACTION]`, `[FS EVENT]`, `[FS ERROR]`, `[INDEX]`, `[ANOTACIONES ERROR]`, etc.
 
-Use structured logs:
-
-```ts
-[FS ACTION]
-[FS EVENT]
-[FS ERROR]
-```
-
----
-
-## Common Issues
-
-* ENOENT → file changed externally
-* EPERM → locked file
-* UI desync → missing watcher event
+Common issues:
+- ENOENT → file changed externally (Dropbox sync)
+- EPERM → locked file (Dropbox, antivirus)
+- UI desync → watcher event missed, consider `refreshNode()`
+- Pen lag → verify canvas approach is intact (see `workbench.md`)
+- Typing lag in notes → verify local state owns textarea (flush on blur only)
 
 ---
 
-# 🚀 Future Enhancements
+# 🧠 Claude Code Behavior
 
-* Full-text PDF search
-* OCR processing
-* Annotation system
-* Multi-user sync
-* Cloud integration
+When modifying code:
+- Read relevant files FIRST, don't assume structure
+- Check the relevant `.claude/context/` doc before touching a subsystem
+- Follow existing patterns — this codebase has strong conventions
+- Use `Edit` over `Write` when possible
+- After changes, run `npx tsc --noEmit` to verify
 
----
-
-# 🎯 Final Goal
-
-This system must behave like a real IDE:
-
-* Instant feedback
-* Real filesystem sync
-* Reliable operations
-* No inconsistencies
+When uncertain about layout/UX decisions: **ask the user first**. Don't rearrange without approval.
 
 ---
 
-# 🧠 Claude Instructions
+# 📌 Current State (2026-04-20)
 
-## When modifying code:
+## Fully implemented features
 
-* Read relevant files FIRST
-* Do NOT assume structure
-* Follow existing patterns
+### Layout / UX
+- **HomeScreen** (`features/home/HomeScreen.tsx`) — shown when no expediente open. Up to 8 recents from `revisor:recents` localStorage.
+- **ExpedienteDashboard** (`features/expediente/ExpedienteDashboard.tsx`) — shown when expediente open but no file selected. Progress bar, status breakdown, file type counts.
+- **Session restore toggle** — `UXStore.restoreSession` default `false`. Toggle in Settings → Apariencia.
+- **Close expediente** — `IconFolderX` in FileExplorer header. `explorer.store.closeDirectory()`.
+- **Right panel — fixed resizable** (`core/workbench/RightPanel.tsx`) — always-visible panel (~28% width) with internal tab bar. Tabs: Cuest./Notas/Citas/Sínt./Marks. Collapsible via drag or `›` button. `openRightPanelTab(tab)` re-expands if collapsed. `rightPanelOpen` default `true`.
+- **File tree filters** — chips for doc status, "Solo PDF", "Con anotaciones". Recursive.
+- **Doc status in tree** — colored dot per file (amber=en revisión, green=revisado, red=con observaciones). Batch status via context menu.
 
----
+### PDF Viewer
+- **DocStatusButton** (`features/pdf-viewer/DocStatusButton.tsx`) — dropdown in PDF toolbar: sin_revisar / en_revision / revisado / con_observaciones.
+- **PdfMinimap** (`features/pdf-viewer/PdfMinimap.tsx`) — right-edge minimap with annotation color markers + amber left edge on bookmarked pages.
+- **Pen tool** — two-canvas GPU (committedCanvas + liveCanvas). Undo/redo stack in `anotaciones.store`.
+- **Text selection bubble** — select text → color dots (highlight) + quote icon (cita).
+- **Split pane** — horizontal split, sync scroll.
+- **Bookmarks** — page-level. Inline label edit in BookmarksPanel.
+- **Annotations undo/redo** — `Ctrl+Z` / `Ctrl+Shift+Z`. MAX_UNDO stack in `anotaciones.store`.
 
-## When working with filesystem:
+### Other features
+- **Command Palette** (`Ctrl+K`) — 30 commands, fuzzy match, arrow nav.
+- **Shortcuts modal** (`?` or keyboard icon) — 6 groups.
+- **XML viewer** — CFDI 3.x/4.x parsed card view + raw pretty-print.
+- **Full-text search** — better-sqlite3 index, cross-document filename + content search.
+- **Settings modal** — full-screen, 5 categories. Zoom 85–135% (default 1.15). Health/focus timers with SciTooltip. Usage stats with streak + 7-day chart.
+- **Reading mode** — fixed amber overlay at z-[99998] (covers Radix portals). Auto mode by hour.
+- **Zen mode** — hides sidebar, activity bar, right panel, status bar.
+- **Context tinting** — subtle hue per expediente ID.
+- **Dark/light mode** — via next-themes.
 
-* Always validate paths
-* Always handle errors
-* Use service layer only
+## What's pending
 
----
+- **Review process definition** — user-deferred ("primero lo defino yo"). Core workflow beyond generic questionnaire undefined. Export/reporte blocked on this.
+- **OCR** — not started. Scanned PDFs have no text layer → search/selection/highlight fail. Options: `tesseract.js` (renderer) or `node-tesseract-ocr` (main).
+- **Document navigation** — no "next unreviewed" / "prev" button in toolbar. Must use file tree manually.
+- **Save indicator** — no visible feedback when notes/questionnaire/docStatus auto-save. User has no confirmation data was persisted.
+- **Export / Reporte** — deferred until process is defined.
 
-## When working with UI:
+## What NOT to change without asking
 
-* Do NOT break layout
-* Respect IDE structure
-* Maintain performance
+- **Right panel fixed pattern** — confirmed correct for this workflow (legal review = PDF + questionnaire simultaneously).
+- **Default `restoreSession = false`** — intentional.
+- **Zoom default 1.15** — user explicitly chose this.
 
----
+## Billing context (2026-04-20)
 
-## Renderer Rules Reminder
-
-* NO Node.js access
-* ALWAYS use window.api
-
----
-
-## Electron Rules Reminder
-
-* Restart required after main/preload changes
-
----
-
-# 🧩 Summary
-
-This is NOT a simple app.
-
-It is:
-
-👉 A desktop IDE for legal document analysis
-
-All implementations must aim for:
-
-* robustness
-* performance
-* correctness
-* scalability
+~18.4h measured in Claude Code sessions (9 abr–19 abr). Estimated real total **25–32h** including pre-session work (project started 2026-04-08).
 
 ---
 

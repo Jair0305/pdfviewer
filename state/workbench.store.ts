@@ -63,8 +63,11 @@ interface WorkbenchState {
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: (open: boolean) => void;
 
-  rightPanelTab: RightPanelTab;
-  setRightPanelTab: (tab: RightPanelTab) => void;
+  rightPanelTab:  RightPanelTab;
+  rightPanelOpen: boolean;
+  setRightPanelTab:  (tab: RightPanelTab) => void;
+  openRightPanelTab: (tab: RightPanelTab) => void; // sets tab AND opens panel
+  setRightPanelOpen: (open: boolean) => void;
 
   splitFile: FileNode | null;
   setSplitFile: (file: FileNode | null) => void;
@@ -107,8 +110,11 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   commandPaletteOpen: false,
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
 
-  rightPanelTab:    "cuestionario",
-  setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
+  rightPanelTab:     "cuestionario",
+  rightPanelOpen:    true,
+  setRightPanelTab:  (tab) => set({ rightPanelTab: tab }),
+  openRightPanelTab: (tab) => set({ rightPanelTab: tab, rightPanelOpen: true }),
+  setRightPanelOpen: (open) => set({ rightPanelOpen: open }),
 
   splitFile:    null,
   setSplitFile: (file) => set({ splitFile: file }),

@@ -474,7 +474,7 @@ export function PdfViewer({ file, isSplitPane = false, onCloseSplit, paneId = "l
   const { bookmarks, toggleBookmark } = useBookmarksStore();
   // Doc status store — loaded flag for toolbar button
   const { isLoaded: docStatusLoaded } = useDocStatusStore();
-  const { setRightPanelTab, setFocusedPane, splitFile } = useWorkbenchStore();
+  const { openRightPanelTab: setRightPanelTab, setFocusedPane, splitFile } = useWorkbenchStore();
 
   // Revision meta for building relative file paths.
   // Use expedientePath directly — it's set even when meta is null (outside clientesFolder).

@@ -164,22 +164,22 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     {
       id: "tab-cuestionario", label: "Ir a Cuestionario", keywords: ["cuestionario", "preguntas", "checklist"],
       icon: IconHelp, group: "Paneles",
-      action: () => wb.getState().setRightPanelTab("cuestionario"),
+      action: () => wb.getState().openRightPanelTab("cuestionario"),
     },
     {
       id: "tab-notas", label: "Ir a Notas / Anotaciones", keywords: ["notas", "anotaciones", "notes"],
       icon: IconNotes, group: "Paneles",
-      action: () => wb.getState().setRightPanelTab("anotaciones"),
+      action: () => wb.getState().openRightPanelTab("anotaciones"),
     },
     {
       id: "tab-citas", label: "Ir a Citas", keywords: ["citas", "fragmentos", "quotes"],
       icon: IconQuote, group: "Paneles",
-      action: () => wb.getState().setRightPanelTab("citas"),
+      action: () => wb.getState().openRightPanelTab("citas"),
     },
     {
       id: "tab-sintesis", label: "Ir a Síntesis", keywords: ["sintesis", "síntesis", "resumen", "summary"],
       icon: IconFileDescription, group: "Paneles",
-      action: () => wb.getState().setRightPanelTab("sintesis"),
+      action: () => wb.getState().openRightPanelTab("sintesis"),
     },
     {
       id: "tab-bookmarks", label: "Ir a Marcadores", keywords: ["marcadores", "bookmarks", "favoritos"],

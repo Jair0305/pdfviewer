@@ -100,7 +100,7 @@ function ResizeHandle({ className }: { className?: string }) {
 // ─── Workbench ────────────────────────────────────────────────────────────────
 
 export function WorkbenchLayout() {
-  const { activeSidebarView, setSidebarView, splitFile, setSplitFile, settingsOpen, setSettingsOpen, shortcutsOpen, setShortcutsOpen, commandPaletteOpen, setCommandPaletteOpen } = useWorkbenchStore();
+  const { activeSidebarView, setSidebarView, splitFile, setSplitFile, settingsOpen, setSettingsOpen, shortcutsOpen, setShortcutsOpen, commandPaletteOpen, setCommandPaletteOpen, rightPanelOpen, setRightPanelOpen } = useWorkbenchStore();
   const { activeTab, restoreTabs }  = useEditorStore();
   const {
     indexStatus, setIndexStatus, root,
@@ -125,11 +125,11 @@ export function WorkbenchLayout() {
   );
   const sidebarRef    = usePanelRef();
   const rightPanelRef = usePanelRef();
+  const rightPanelExpandedSizeRef = useRef<number>(28);
 
   // Track sidebar size to detect collapse → expand transitions
   const prevSidebarSizeRef     = useRef<number>(22);
   const sidebarExpandedSizeRef = useRef<number>(22);  // last non-zero sidebar %
-  const rightPanelSizeRef      = useRef<number>(36);  // last right panel %
   const [sidebarKey, setSidebarKey] = useState(0);
 
   // Prevent double-restore across strict mode double-invocation
@@ -158,6 +158,15 @@ export function WorkbenchLayout() {
       sidebarRef.current?.collapse?.();
     }
   }, [activeSidebarView, sidebarRef]);
+
+  // Sync rightPanelOpen → panel expand/collapse
+  useEffect(() => {
+    if (rightPanelOpen) {
+      rightPanelRef.current?.expand?.();
+    } else {
+      rightPanelRef.current?.collapse?.();
+    }
+  }, [rightPanelOpen, rightPanelRef]);
 
   // ── Session restore (once, on Electron ready) ──────────────────────────────
   useEffect(() => {
@@ -188,10 +197,6 @@ export function WorkbenchLayout() {
         sidebarRef.current?.resize(session.sidebarSize);
         sidebarExpandedSizeRef.current = session.sidebarSize;
       }
-      if (session.rightPanelSize && session.rightPanelSize > 0) {
-        rightPanelRef.current?.resize(session.rightPanelSize);
-        rightPanelSizeRef.current = session.rightPanelSize;
-      }
     });
   }, [inElectron, openDirectoryByPath, restoreTabs, setSidebarView]);
 
@@ -208,7 +213,6 @@ export function WorkbenchLayout() {
         tabs,
         activeTabId,
         sidebarSize:    sidebarExpandedSizeRef.current,
-        rightPanelSize: rightPanelSizeRef.current,
         activeSidebarView,
       });
     };
@@ -224,7 +228,7 @@ export function WorkbenchLayout() {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [sidebarExpandedSizeRef, rightPanelSizeRef]);
+  }, [sidebarExpandedSizeRef]);
 
   // ── Load / unload revision when the explorer root changes ─────────────────
   useEffect(() => {
@@ -426,50 +430,56 @@ export function WorkbenchLayout() {
               {/* Single shared PDF toolbar */}
               <PdfToolbar />
 
-              {/* PDF + Questionnaire */}
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <PanelGroup orientation="horizontal" className="h-full w-full">
-                  {/* PDF Viewer — single or split */}
-                  <Panel minSize="200px" style={{ overflow: "hidden" }}>
-                    {splitFile ? (
-                      <PanelGroup orientation="horizontal" className="h-full w-full">
-                        <Panel minSize="200px" style={{ overflow: "hidden" }}>
-                          <PdfViewer file={activeFile} paneId="left" />
-                        </Panel>
-                        <ResizeHandle />
-                        <Panel minSize="200px" style={{ overflow: "hidden" }}>
-                          <PdfViewer
-                            file={splitFile}
-                            isSplitPane
-                            paneId="right"
-                            onCloseSplit={() => setSplitFile(null)}
-                          />
-                        </Panel>
-                      </PanelGroup>
-                    ) : (
-                      <PdfViewer file={activeFile} paneId="left" />
-                    )}
-                  </Panel>
-
-                  {/* Right panel: Cuestionario / Notas tabs */}
-                  {!zenMode && (
-                    <>
-                      <ResizeHandle />
-                      <Panel
-                        panelRef={rightPanelRef}
-                        defaultSize={36}
-                        minSize="200px"
-                        style={{ overflow: "hidden" }}
-                        onResize={(panelSize) => {
-                          rightPanelSizeRef.current = panelSize.asPercentage;
-                        }}
-                      >
-                        <RightPanel questions={QUESTIONNAIRE_TEMPLATE} />
+              {/* PDF + Right panel */}
+              <PanelGroup orientation="horizontal" className="min-h-0 flex-1">
+                {/* PDF pane */}
+                <Panel style={{ overflow: "hidden" }}>
+                  {splitFile ? (
+                    <PanelGroup orientation="horizontal" className="h-full w-full">
+                      <Panel minSize="200px" style={{ overflow: "hidden" }}>
+                        <PdfViewer file={activeFile} paneId="left" />
                       </Panel>
-                    </>
+                      <ResizeHandle />
+                      <Panel minSize="200px" style={{ overflow: "hidden" }}>
+                        <PdfViewer
+                          file={splitFile}
+                          isSplitPane
+                          paneId="right"
+                          onCloseSplit={() => setSplitFile(null)}
+                        />
+                      </Panel>
+                    </PanelGroup>
+                  ) : (
+                    <PdfViewer file={activeFile} paneId="left" />
                   )}
-                </PanelGroup>
-              </div>
+                </Panel>
+
+                {/* Right panel — fixed resizable, always visible */}
+                {!zenMode && (
+                  <>
+                    <ResizeHandle />
+                    <Panel
+                      panelRef={rightPanelRef}
+                      defaultSize={28}
+                      minSize="240px"
+                      collapsible
+                      collapsedSize={0}
+                      onResize={(panelSize) => {
+                        const size = panelSize.asPercentage;
+                        if (size === 0 && rightPanelOpen) setRightPanelOpen(false);
+                        else if (size > 0 && !rightPanelOpen) setRightPanelOpen(true);
+                        if (size > 0) rightPanelExpandedSizeRef.current = size;
+                      }}
+                      style={{ overflow: "hidden" }}
+                    >
+                      <RightPanel
+                        questions={QUESTIONNAIRE_TEMPLATE}
+                        onCollapse={() => setRightPanelOpen(false)}
+                      />
+                    </Panel>
+                  </>
+                )}
+              </PanelGroup>
             </div>
           </Panel>
         </PanelGroup>
